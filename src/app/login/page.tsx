@@ -22,7 +22,14 @@ export const metadata: Metadata = {
  * README §1.1 responsive: "below 900px the left panel is dropped, the card
  * centres" — marked [INFERRED] in the handoff and implemented as specified.
  */
-export default function LoginPage() {
+export default async function LoginPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ error?: string }>;
+}) {
+  // The OAuth callback bounces failures back here as ?error=…
+  const { error } = await searchParams;
+
   return (
     <div className="login-grid" style={{ minHeight: "100vh", background: "var(--color-bg)" }}>
       <div
@@ -127,7 +134,7 @@ export default function LoginPage() {
       </div>
 
       <div className="grid place-items-center" style={{ padding: 40 }}>
-        <LoginForm />
+        <LoginForm initialError={error ?? null} />
       </div>
     </div>
   );

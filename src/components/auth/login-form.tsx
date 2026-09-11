@@ -16,8 +16,8 @@ import { signInWithAzure, signInWithPassword } from "@/lib/auth/actions";
  *
  * Prototype: design-handoff/ODM Supplier Visit.dc.html lines 92..107.
  */
-export function LoginForm() {
-  const [error, setError] = useState<string | null>(null);
+export function LoginForm({ initialError = null }: { initialError?: string | null }) {
+  const [error, setError] = useState<string | null>(initialError);
   const [pending, startTransition] = useTransition();
 
   function handleSubmit(formData: FormData) {
