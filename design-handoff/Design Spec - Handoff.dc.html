@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="_ds/styles.css">
+<script src="_ds/_ds_bundle.js"></script>
+<style>
+  body { margin: 0; -webkit-font-smoothing: antialiased; }
+  a { color: var(--color-accent-700); }
+  a:hover { color: var(--color-accent-800); }
+</style>
+</helmet>
+
+<div style="max-width:1080px;margin:0 auto;padding:40px 28px 80px;font-family:var(--font-body)">
+
+  <div style="display:flex;align-items:flex-start;gap:18px;border-bottom:1px solid var(--color-divider);padding-bottom:22px;margin-bottom:32px">
+    <img src="assets/ebara-logo.png" alt="EBARA" style="width:64px;flex:none;margin-top:4px">
+    <div style="flex:1;min-width:0">
+      <div style="font:10px var(--font-body);letter-spacing:.16em;text-transform:uppercase;color:var(--color-accent-700);margin-bottom:5px">Design handoff · for implementation with Claude Code</div>
+      <h1 style="margin:0 0 6px;font-size:38px">ODM Supplier Visit</h1>
+      <p style="font-size:14px;line-height:1.6;margin:0;max-width:640px;color:var(--color-neutral-800)">The component, state and data contract behind the prototype. Read this alongside <a href="ODM Supplier Visit.dc.html">ODM Supplier Visit.dc.html</a> — the prototype is the source of truth for layout; this page is the source of truth for rules.</p>
+    </div>
+  </div>
+
+  <h3 style="margin:0 0 4px">01 · What I assumed</h3>
+  <p style="font-size:13.5px;color:var(--color-neutral-700);margin:0 0 16px">Where the brief left a decision open, this is what I chose and why. Correct me and I will change it.</p>
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px;margin-bottom:36px">
+    <div class="card blueprint" style="padding:14px">
+      <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+      <div class="card-kicker">Sample data</div>
+      <div class="card-title">Built on your real report</div>
+      <p class="card-body">Every string, photo, certificate, Q&amp;A and appendix caption comes from the HEBEI HUATONG report you uploaded (GSO-2608001x00). Nothing is invented, so the layout is stress-tested against real content length.</p>
+    </div>
+    <div class="card blueprint" style="padding:14px">
+      <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+      <div class="card-kicker">Editor shape</div>
+      <div class="card-title">Three panes, not a wizard</div>
+      <p class="card-body">Section navigator (210 px) · workspace · a rail (320 px) that is either <strong style="font-weight:500">Sources</strong> or the <strong style="font-weight:500">AI Assistant</strong>. Shell minimum is 1280 px, so the writing column holds ~530 px with the rail open and ~840 px closed. A wizard would fight the real workflow, which is non-linear.</p>
+    </div>
+    <div class="card blueprint" style="padding:14px">
+      <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+      <div class="card-kicker">Completion</div>
+      <div class="card-title">Derived, never stored</div>
+      <p class="card-body">Completion % is computed from 13 section predicates (see §06). It cannot drift from reality, and the dashboard, list and editor all read the same number.</p>
+    </div>
+    <div class="card blueprint" style="padding:14px">
+      <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+      <div class="card-kicker">Supplier data</div>
+      <div class="card-title">Linked, then frozen</div>
+      <p class="card-body">§2 and §7 read the supplier record — never re-typed. On report creation a snapshot is frozen; if the record changes later the editor offers “Refresh snapshot” rather than silently rewriting a signed report.</p>
+    </div>
+    <div class="card blueprint" style="padding:14px">
+      <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+      <div class="card-kicker">Mobile</div>
+      <div class="card-title">Capture only</div>
+      <p class="card-body">Visit Mode does photos, notes, observations and sources. It never tries to be the editor. Read-only report view so you can check what is still missing while you are still in the factory.</p>
+    </div>
+    <div class="card blueprint" style="padding:14px">
+      <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+      <div class="card-kicker">Deviation from the design system</div>
+      <div class="card-title">Photos stay true colour</div>
+      <p class="card-body">Industry duotones photography into the steel accent. Nothing here is duotoned: appendix work requires judging real factory colour, so photo cards keep the hairline frame and drop the wash, and the login cover is a knocked-out product plate on the technical grid rather than a photograph.</p>
+    </div>
+  </div>
+
+  <h3 style="margin:0 0 4px">02 · Route map</h3>
+  <p style="font-size:13.5px;color:var(--color-neutral-700);margin:0 0 14px">Every route in the prototype, and what it owns.</p>
+  <div class="blueprint" style="padding:2px 12px 6px;margin-bottom:36px">
+    <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+    <table class="table">
+      <thead><tr><th style="width:190px">Route</th><th>Screen</th><th>Owns</th></tr></thead>
+      <tbody>
+        <tr><td style="font-family:ui-monospace,Menlo,monospace;font-size:11.5px">/login</td><td style="font-size:12.5px">Login</td><td style="font-size:12.5px">Supabase Auth · corporate SSO · role resolution</td></tr>
+        <tr><td style="font-family:ui-monospace,Menlo,monospace;font-size:11.5px">/</td><td style="font-size:12.5px">Dashboard</td><td style="font-size:12.5px">5 KPIs · recent reports · attention queue · visit calendar</td></tr>
+        <tr><td style="font-family:ui-monospace,Menlo,monospace;font-size:11.5px">/reports</td><td style="font-size:12.5px">Reports list</td><td style="font-size:12.5px">7 filters · completion column · row actions (open, duplicate, export, archive, delete)</td></tr>
+        <tr><td style="font-family:ui-monospace,Menlo,monospace;font-size:11.5px">/reports/:id/:section</td><td style="font-size:12.5px">Report editor</td><td style="font-size:12.5px">13 section panels · autosave · Sources rail · AI rail · export</td></tr>
+        <tr><td style="font-family:ui-monospace,Menlo,monospace;font-size:11.5px">/suppliers</td><td style="font-size:12.5px">Suppliers list</td><td style="font-size:12.5px">5 filters · certifications column · report count</td></tr>
+        <tr><td style="font-family:ui-monospace,Menlo,monospace;font-size:11.5px">/suppliers/:id</td><td style="font-size:12.5px">Supplier detail</td><td style="font-size:12.5px">6 tabs: overview, contacts, products, certificates, files, visit history</td></tr>
+        <tr><td style="font-family:ui-monospace,Menlo,monospace;font-size:11.5px">/suppliers/new · /:id/edit</td><td style="font-size:12.5px">Add / edit supplier</td><td style="font-size:12.5px">7 numbered sections · repeatable contacts and certificates · sticky save bar</td></tr>
+        <tr><td style="font-family:ui-monospace,Menlo,monospace;font-size:11.5px">/assistant</td><td style="font-size:12.5px">AI Assistant</td><td style="font-size:12.5px">Report-scoped actions + cross-report queries (knowledge base, staged)</td></tr>
+        <tr><td style="font-family:ui-monospace,Menlo,monospace;font-size:11.5px">/templates · /templates/mapping</td><td style="font-size:12.5px">Templates &amp; mapping</td><td style="font-size:12.5px">DOCX versions · page geometry · 17 placeholders → app fields</td></tr>
+        <tr><td style="font-family:ui-monospace,Menlo,monospace;font-size:11.5px">/settings</td><td style="font-size:12.5px">Settings</td><td style="font-size:12.5px">7 panels · AI preferences · members · roles · storage</td></tr>
+        <tr><td style="font-family:ui-monospace,Menlo,monospace;font-size:11.5px">/visit/:id</td><td style="font-size:12.5px">Visit Mode (mobile)</td><td style="font-size:12.5px">Camera · quick note · quick observation · offline queue · read-only report</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3 style="margin:0 0 4px">03 · Tokens in use</h3>
+  <p style="font-size:13.5px;color:var(--color-neutral-700);margin:0 0 14px">All values come from the Industry stylesheet. Two functional colours were added for status only — never decoration.</p>
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:18px;margin-bottom:22px">
+    <div>
+      <h6 style="margin:0 0 8px">Surfaces</h6>
+      <div style="display:flex;flex-direction:column;gap:4px;font-size:11.5px">
+        <div style="display:flex;align-items:center;gap:9px"><span style="width:26px;height:18px;background:var(--color-bg);border:1px solid var(--color-divider)"></span>--color-bg · page ground</div>
+        <div style="display:flex;align-items:center;gap:9px"><span style="width:26px;height:18px;background:var(--color-neutral-100);border:1px solid var(--color-divider)"></span>--color-neutral-100 · document surface</div>
+        <div style="display:flex;align-items:center;gap:9px"><span style="width:26px;height:18px;background:var(--color-surface);border:1px solid var(--color-divider)"></span>--color-surface · input field</div>
+        <div style="display:flex;align-items:center;gap:9px"><span style="width:26px;height:18px;background:var(--color-accent-900)"></span>--color-accent-900 · sidebar field</div>
+      </div>
+    </div>
+    <div>
+      <h6 style="margin:0 0 8px">Accent</h6>
+      <div style="display:flex;gap:2px;margin-bottom:6px">
+        <span style="flex:1;height:26px;background:var(--color-accent-100)"></span>
+        <span style="flex:1;height:26px;background:var(--color-accent-300)"></span>
+        <span style="flex:1;height:26px;background:var(--color-accent)"></span>
+        <span style="flex:1;height:26px;background:var(--color-accent-700)"></span>
+        <span style="flex:1;height:26px;background:var(--color-accent-900)"></span>
+      </div>
+      <div style="font-size:11.5px;color:var(--color-neutral-700);line-height:1.5">100 tint for AI regions · 300 borders · 500 primary button and progress · 700 links and labels · 900 sidebar and photo badges.</div>
+    </div>
+    <div>
+      <h6 style="margin:0 0 8px">Status (functional only)</h6>
+      <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:7px">
+        <span class="tag" style="background:var(--color-neutral-200);color:var(--color-neutral-800)">Draft</span>
+        <span class="tag" style="background:#f7eddb;color:#7a5a12">In Review</span>
+        <span class="tag" style="background:var(--color-accent-100);color:var(--color-accent-800)">Final</span>
+        <span class="tag" style="background:transparent;color:var(--color-neutral-600);border:1px solid var(--color-divider)">Archived</span>
+        <span class="tag" style="background:#f7e3e3;color:#8a3232">Not evidenced</span>
+      </div>
+      <div style="font-size:11.5px;color:var(--color-neutral-700);line-height:1.5">Amber <span style="font-family:ui-monospace,Menlo,monospace;font-size:11px">#f7eddb / #7a5a12</span> = needs a human. Red <span style="font-family:ui-monospace,Menlo,monospace;font-size:11px">#f7e3e3 / #8a3232</span> = missing or invalid. Both carry text, never colour alone.</div>
+    </div>
+    <div>
+      <h6 style="margin:0 0 8px">Type</h6>
+      <div style="font-family:var(--font-heading);font-weight:600;font-size:25px;line-height:1.1">Barlow Condensed</div>
+      <div style="font-size:11.5px;color:var(--color-neutral-700);margin-bottom:6px">Headings, doc numbers, KPI values, table type column</div>
+      <div style="font-size:14px">Barlow — body, 13px in chrome, 13.5px in the document surface</div>
+      <div style="font-size:11.5px;color:var(--color-neutral-700);margin-top:4px">Labels: 10–11.5px, 0.12em tracking, uppercase.</div>
+    </div>
+  </div>
+  <div style="display:flex;align-items:flex-start;gap:9px;padding:11px 13px;border:1px solid var(--color-divider);font-size:12.5px;line-height:1.6;color:var(--color-neutral-800);margin-bottom:36px">
+    <span style="color:var(--color-accent-700);flex:none;font-family:var(--font-heading);font-weight:600">Rule</span>
+    <span>Cards, figures and inputs are square, transparent, hairline-bordered blueprint objects with four <span style="font-family:ui-monospace,Menlo,monospace;font-size:11px">+</span> registration marks. The solid accent primary button and the steel sidebar field are the only filled surfaces. No rounded corners, no gradients, no shadows except the three elevation tokens on overlays.</span>
+  </div>
+
+  <h3 style="margin:0 0 4px">04 · Component contract</h3>
+  <p style="font-size:13.5px;color:var(--color-neutral-700);margin:0 0 14px">The pieces that repeat. Everything else is composition.</p>
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px;margin-bottom:20px">
+
+    <div>
+      <h6 style="margin:0 0 8px">Photo card</h6>
+      <div class="blueprint" style="padding:0;background:var(--color-neutral-100);max-width:250px">
+        <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+        <div style="position:relative">
+          <img src="assets/photos/f13.jpg" alt="Flame test chamber" style="width:100%;height:140px;object-fit:cover;display:block">
+          <span style="position:absolute;top:0;left:0;background:var(--color-accent-900);color:#fff;font-size:10px;padding:2px 6px;font-family:ui-monospace,Menlo,monospace">13</span>
+          <span style="position:absolute;top:0;right:0;background:rgba(242,242,243,.92);font-size:9px;padding:2px 5px;letter-spacing:.06em;text-transform:uppercase">Testing</span>
+        </div>
+        <div style="padding:9px 10px 10px">
+          <div style="font-size:11.5px;line-height:1.45;padding:6px 8px;border:1px solid var(--color-divider);background:var(--color-bg)">Vertical flame test chamber (UL single-cable method)</div>
+          <div style="font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--color-accent-700);margin-top:7px">AI · 95% confidence</div>
+        </div>
+      </div>
+      <p style="font-size:12.5px;line-height:1.6;color:var(--color-neutral-800);margin:9px 0 0">Order number is the appendix position, not an id. Category badge drives Sort and Filter. Below the confidence threshold the label turns amber and reads <em>review required</em>. Caption is a live textarea — typing accepts the suggestion.</p>
+    </div>
+
+    <div>
+      <h6 style="margin:0 0 8px">AI suggestion card</h6>
+      <div class="blueprint" style="padding:11px 12px;max-width:340px">
+        <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+        <div style="display:flex;align-items:center;gap:7px;margin-bottom:6px">
+          <span class="tag tag-outline" style="font-size:10px">Risks</span>
+          <span style="font-size:10.5px;color:var(--color-neutral-600)">confidence 79%</span>
+        </div>
+        <div style="font-size:12.5px;line-height:1.55">Jacket thickness must be adjusted from the specified values to hold the outer diameter required by EPAC.</div>
+        <div style="display:flex;gap:5px;margin-top:9px">
+          <button class="btn btn-primary" style="font-size:11.5px;padding:3px 9px">Add to Report</button>
+          <button class="btn btn-secondary" style="font-size:11.5px;padding:3px 9px">Edit &amp; Add</button>
+          <button class="btn btn-ghost" style="font-size:11.5px;padding:3px 6px">Dismiss</button>
+        </div>
+      </div>
+      <p style="font-size:12.5px;line-height:1.6;color:var(--color-neutral-800);margin:9px 0 0">One finding, one category, one confidence, three actions. Adding never removes the card from the source list — it flips to an <em>In report</em> badge so the reviewer can see what they have processed.</p>
+    </div>
+
+    <div>
+      <h6 style="margin:0 0 8px">Observation card</h6>
+      <div class="blueprint" style="padding:11px 12px;max-width:340px">
+        <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+        <div style="display:flex;align-items:center;gap:7px;margin-bottom:6px">
+          <span class="tag tag-outline" style="font-size:10px">Quality</span>
+          <span class="tag" style="background:var(--color-neutral-200);color:var(--color-neutral-800)">Normal</span>
+        </div>
+        <div style="font-size:13px;line-height:1.6">Five separate inspection stages are applied along the cable manufacturing process, from raw material to finished product.</div>
+      </div>
+      <p style="font-size:12.5px;line-height:1.6;color:var(--color-neutral-800);margin:9px 0 0">14 categories (Manufacturing … Open Points). Priority is Normal or High; Risks and Open Points default to High. Optional attached photos. §6 also offers a plain rich-text view for people who prefer to write prose.</p>
+    </div>
+
+    <div>
+      <h6 style="margin:0 0 8px">Completion &amp; autosave</h6>
+      <div class="blueprint" style="padding:12px;max-width:340px">
+        <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+        <div style="display:flex;align-items:baseline;gap:6px">
+          <span style="font:10px var(--font-body);letter-spacing:.12em;text-transform:uppercase;color:var(--color-neutral-600);flex:1">Report Completion</span>
+          <span style="font-family:var(--font-heading);font-weight:600;font-size:17px">69%</span>
+        </div>
+        <div style="height:5px;background:var(--color-neutral-300);margin-top:6px"><div style="height:5px;width:69%;background:var(--color-accent)"></div></div>
+        <div style="display:flex;gap:16px;margin-top:11px;font-size:11.5px;color:var(--color-neutral-600)">
+          <span style="display:flex;align-items:center;gap:6px"><span style="width:5px;height:5px;background:var(--color-accent)"></span>Saved · last saved 11:42</span>
+          <span style="display:flex;align-items:center;gap:6px"><span style="width:5px;height:5px;background:#b07a12"></span>Saving…</span>
+        </div>
+      </div>
+      <p style="font-size:12.5px;line-height:1.6;color:var(--color-neutral-800);margin:9px 0 0">Any keystroke flips to <em>Saving…</em>; the clock timestamp updates on settle. A section shows ✓ only when its predicate passes — see §06.</p>
+    </div>
+  </div>
+  <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:36px">
+    <span style="font-size:11.5px;color:var(--color-neutral-600);margin-right:4px">Also specified in the prototype:</span>
+    <span class="tag tag-neutral">Sidebar</span><span class="tag tag-neutral">Top bar + global search</span><span class="tag tag-neutral">Breadcrumbs</span>
+    <span class="tag tag-neutral">Buttons · primary / secondary / ghost / icon</span><span class="tag tag-neutral">Text field</span><span class="tag tag-neutral">Textarea</span>
+    <span class="tag tag-neutral">Rich text toolbar</span><span class="tag tag-neutral">Select</span><span class="tag tag-neutral">Multi-select chips</span>
+    <span class="tag tag-neutral">Date / time picker</span><span class="tag tag-neutral">Tabs</span><span class="tag tag-neutral">Segmented control</span>
+    <span class="tag tag-neutral">Status badge</span><span class="tag tag-neutral">Table</span><span class="tag tag-neutral">Filter bar</span>
+    <span class="tag tag-neutral">Upload zone</span><span class="tag tag-neutral">AI comparison modal</span><span class="tag tag-neutral">Confirmation modal</span>
+    <span class="tag tag-neutral">Toast</span><span class="tag tag-neutral">Progress indicator</span><span class="tag tag-neutral">Document preview</span>
+    <span class="tag tag-neutral">Appendix grid</span><span class="tag tag-neutral">Template mapper</span><span class="tag tag-neutral">Transcript viewer</span>
+  </div>
+
+  <h3 style="margin:0 0 4px">05 · The AI contract</h3>
+  <p style="font-size:13.5px;color:var(--color-neutral-700);margin:0 0 14px">One rule, applied without exception: <strong style="font-weight:500">AI output is a proposal until a human accepts it.</strong></p>
+  <div class="blueprint" style="padding:2px 12px 6px;margin-bottom:14px">
+    <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+    <table class="table">
+      <thead><tr><th style="width:210px">Where</th><th>Surface</th><th>Accept path</th></tr></thead>
+      <tbody>
+        <tr><td style="font-size:12.5px">Text sections (1, 3, 4, 5, 8)</td><td style="font-size:12.5px">Side-by-side comparison modal · current vs suggestion</td><td style="font-size:12.5px">Replace · Insert Below · Copy · Discard</td></tr>
+        <tr><td style="font-size:12.5px">Conclusion (9)</td><td style="font-size:12.5px">Source picker → generating → 9-heading draft</td><td style="font-size:12.5px">Use Conclusion · Regenerate · Shorter · More Executive · More Technical · Cancel</td></tr>
+        <tr><td style="font-size:12.5px">Photo captions (4.1, 8.1, 10)</td><td style="font-size:12.5px">Suggested caption on the card + full analysis modal</td><td style="font-size:12.5px">Accept · Edit · Regenerate · Discard</td></tr>
+        <tr><td style="font-size:12.5px">Transcript</td><td style="font-size:12.5px">Findings grouped by category, with confidence</td><td style="font-size:12.5px">Add to Report · Edit &amp; Add · Dismiss · Add all</td></tr>
+        <tr><td style="font-size:12.5px">Assistant rail</td><td style="font-size:12.5px">Answer with section and timestamp citations</td><td style="font-size:12.5px">Insert into §n · Copy · Regenerate</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px;margin-bottom:36px">
+    <div style="padding:11px 13px;border:1px solid var(--color-accent-300);background:var(--color-accent-100);font-size:12.5px;line-height:1.6;color:var(--color-accent-900)">Quick rewrites available on every text field: Professional · Executive · Technical · Concise · Expand · Fix Grammar.</div>
+    <div style="padding:11px 13px;border:1px solid var(--color-divider);font-size:12.5px;line-height:1.6;color:var(--color-neutral-800)">Photo persona: senior manufacturing / production engineering specialist — pumps, motors, machining, casting, welding, assembly, CNC, QC, hydraulic and electrical test, winding, warehousing, labs.</div>
+    <div style="padding:11px 13px;border:1px solid var(--color-divider);font-size:12.5px;line-height:1.6;color:var(--color-neutral-800)">The report is fully usable with AI switched off. Every AI entry point has a manual equivalent; the Conclusion empty state offers “Write manually” beside “Generate”.</div>
+  </div>
+
+  <h3 style="margin:0 0 4px">06 · Completion predicates</h3>
+  <p style="font-size:13.5px;color:var(--color-neutral-700);margin:0 0 14px">13 sections, equal weight. Completion = passing ÷ 13.</p>
+  <div class="blueprint" style="padding:2px 12px 6px;margin-bottom:36px">
+    <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+    <table class="table">
+      <thead><tr><th style="width:250px">Section</th><th>Passes when</th></tr></thead>
+      <tbody>
+        <tr><td style="font-size:12.5px">General Information</td><td style="font-size:12.5px">Always — created with the report</td></tr>
+        <tr><td style="font-size:12.5px">1 Purpose · 3 Overview · 4 Main Products · 8 Partners</td><td style="font-size:12.5px">Body text longer than 40 characters</td></tr>
+        <tr><td style="font-size:12.5px">2 Company Information · 7 Certificates</td><td style="font-size:12.5px">Always — linked from the supplier record</td></tr>
+        <tr><td style="font-size:12.5px">4.1 Main Products Images · 8.1 Partners Images · 10 Appendix</td><td style="font-size:12.5px">At least one photo and <strong style="font-weight:500">every</strong> photo has an accepted caption</td></tr>
+        <tr><td style="font-size:12.5px">5 Target Products</td><td style="font-size:12.5px">At least one target product row</td></tr>
+        <tr><td style="font-size:12.5px">6 Visit Relevant Information</td><td style="font-size:12.5px">8 or more observations added</td></tr>
+        <tr><td style="font-size:12.5px">9 Conclusion</td><td style="font-size:12.5px">Body text longer than 40 characters</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3 style="margin:0 0 4px">07 · Appendix layout — the 6.5 cm question</h3>
+  <p style="font-size:13.5px;color:var(--color-neutral-700);margin:0 0 14px">The requirement was not changed. It is surfaced as arithmetic the user can see and decide on.</p>
+  <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(280px,340px);gap:20px;align-items:start;margin-bottom:36px">
+    <div>
+      <div class="blueprint" style="padding:13px;margin-bottom:12px">
+        <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+        <div style="font-size:13px;line-height:1.75">
+          A4 portrait 21.0 × 29.7 cm, margins 2.0 cm → text box <strong style="font-weight:500">17.0 × 25.7 cm</strong><br>
+          One alternating pair = photo row (h) + caption row (0.55 cm)<br>
+          At h = 6.5 cm → pair height 7.05 cm → <strong style="font-weight:500">3 pairs = 21.15 cm fits; 6 pairs = 42.3 cm does not</strong><br>
+          12 alternating rows (6 photo rows) exceeds the page by 16.6 cm
+        </div>
+      </div>
+      <div style="display:flex;align-items:flex-start;gap:9px;padding:11px 13px;border:1px solid #d8b45e;background:#f7eddb;font-size:12.5px;line-height:1.6;color:#5f4610">
+        <span style="font-family:var(--font-heading);font-weight:600;flex:none;color:#7a5a12">UI</span>
+        <span>Layout &amp; Preview shows the template geometry, lets the user move image height and rows per page, and states the conflict in centimetres with the maximum that does fit. The export proceeds either way — the uploaded DOCX template has final say on pagination, and the preview mirrors what it will produce.</span>
+      </div>
+    </div>
+    <div>
+      <div style="font-size:11px;color:var(--color-neutral-600);margin-bottom:5px">Page 1 · 2 columns × 3 pairs</div>
+      <div class="blueprint" style="padding:14px 12px;background:#fff">
+        <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:9px">
+          <div><img src="assets/photos/f01.jpg" alt="" style="width:100%;height:66px;object-fit:cover;border:1px solid var(--color-neutral-300)"><div style="font-size:9px;text-align:center;margin-top:2px">Factory Entrance</div></div>
+          <div><img src="assets/photos/f02.jpg" alt="" style="width:100%;height:66px;object-fit:cover;border:1px solid var(--color-neutral-300)"><div style="font-size:9px;text-align:center;margin-top:2px">Production Line</div></div>
+          <div><img src="assets/photos/f13.jpg" alt="" style="width:100%;height:66px;object-fit:cover;border:1px solid var(--color-neutral-300)"><div style="font-size:9px;text-align:center;margin-top:2px">Flame Test</div></div>
+          <div><img src="assets/photos/f14.jpg" alt="" style="width:100%;height:66px;object-fit:cover;border:1px solid var(--color-neutral-300)"><div style="font-size:9px;text-align:center;margin-top:2px">Quality Control</div></div>
+          <div><img src="assets/photos/f18.jpg" alt="" style="width:100%;height:66px;object-fit:cover;border:1px solid var(--color-neutral-300)"><div style="font-size:9px;text-align:center;margin-top:2px">Pre-Shipment Inspection</div></div>
+          <div><img src="assets/photos/f21.jpg" alt="" style="width:100%;height:66px;object-fit:cover;border:1px solid var(--color-neutral-300)"><div style="font-size:9px;text-align:center;margin-top:2px">Ww Cables</div></div>
+        </div>
+      </div>
+      <div style="font-size:11.5px;color:var(--color-neutral-700);margin-top:7px;line-height:1.5">Captions taken verbatim from your existing appendix, so the grid is proven against real caption lengths.</div>
+    </div>
+  </div>
+
+  <h3 style="margin:0 0 4px">08 · System states</h3>
+  <p style="font-size:13.5px;color:var(--color-neutral-700);margin:0 0 14px">Factory connections in China are unreliable. Losing entered work is the only unacceptable failure.</p>
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(232px,1fr));gap:10px;margin-bottom:36px">
+    <div style="padding:10px 12px;border:1px solid var(--color-divider);font-size:12.5px;line-height:1.55"><strong style="font-weight:500">Saving / Saved</strong><br><span style="color:var(--color-neutral-700)">Dot + timestamp in the editor header. Never a blocking spinner.</span></div>
+    <div style="padding:10px 12px;border:1px solid #d8b45e;background:#f7eddb;font-size:12.5px;line-height:1.55;color:#5f4610"><strong style="font-weight:500">Offline</strong><br>Top bar switches to “Offline — n changes queued”. Visit Mode shows the queue count. Writes go to local storage first.</div>
+    <div style="padding:10px 12px;border:1px solid var(--color-divider);font-size:12.5px;line-height:1.55"><strong style="font-weight:500">Uploading</strong><br><span style="color:var(--color-neutral-700)">Per-photo progress on the card; the grid stays interactive. Failed uploads keep the card with a Retry action.</span></div>
+    <div style="padding:10px 12px;border:1px solid var(--color-divider);font-size:12.5px;line-height:1.55"><strong style="font-weight:500">AI running / failed</strong><br><span style="color:var(--color-neutral-700)">Inline spinner in the modal that requested it. On failure the user's text is untouched and Retry is offered.</span></div>
+    <div style="padding:10px 12px;border:1px solid var(--color-divider);font-size:12.5px;line-height:1.55"><strong style="font-weight:500">DOCX running / failed</strong><br><span style="color:var(--color-neutral-700)">Four named stages with a progress bar. On failure, which stage failed and which section caused it.</span></div>
+    <div style="padding:10px 12px;border:1px solid var(--color-divider);font-size:12.5px;line-height:1.55"><strong style="font-weight:500">Incomplete export</strong><br><span style="color:var(--color-neutral-700)">Amber pre-flight listing empty placeholders and uncaptioned photos. Export is allowed anyway.</span></div>
+    <div style="padding:10px 12px;border:1px solid var(--color-divider);font-size:12.5px;line-height:1.55"><strong style="font-weight:500">No transcript / no supplier</strong><br><span style="color:var(--color-neutral-700)">AI actions that need a source are disabled with the reason, not hidden.</span></div>
+    <div style="padding:10px 12px;border:1px solid var(--color-divider);font-size:12.5px;line-height:1.55"><strong style="font-weight:500">Empty states</strong><br><span style="color:var(--color-neutral-700)">Suppliers, reports, photos and conclusion each state what is missing and offer the one action that fixes it.</span></div>
+  </div>
+
+  <h3 style="margin:0 0 4px">09 · Build notes</h3>
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px;margin-bottom:36px">
+    <div class="card blueprint" style="padding:14px">
+      <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+      <div class="card-kicker">Data</div>
+      <div class="card-title">Tables to create</div>
+      <p class="card-body"><span style="font-family:ui-monospace,Menlo,monospace;font-size:11px">suppliers, supplier_contacts, supplier_certificates, supplier_files, reports, report_sections, report_snapshots, observations, qa_items, target_products, photos, sources, findings, templates, template_mappings, members</span>. Photos carry <span style="font-family:ui-monospace,Menlo,monospace;font-size:11px">section, position, caption, ai_caption, ai_confidence, state</span>.</p>
+    </div>
+    <div class="card blueprint" style="padding:14px">
+      <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+      <div class="card-kicker">Autosave</div>
+      <div class="card-title">Section-scoped, debounced</div>
+      <p class="card-body">Patch one section at a time (400 ms debounce), optimistic UI, queue in IndexedDB when offline, replay on reconnect. Keep a version row per save so “history” and AI rollback are free.</p>
+    </div>
+    <div class="card blueprint" style="padding:14px">
+      <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+      <div class="card-kicker">DOCX</div>
+      <div class="card-title">Template-driven, server-side</div>
+      <p class="card-body">Fill the uploaded template rather than generating a document: text placeholders by name, three image regions built as tables. Re-scan the DOCX on upload to detect placeholders and flag unbound ones on the mapping screen.</p>
+    </div>
+    <div class="card blueprint" style="padding:14px">
+      <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+      <div class="card-kicker">Extensible</div>
+      <div class="card-title">Left room for</div>
+      <p class="card-body">Supplier scorecards and comparison (supplier detail already tabbed), action item tracking (observations carry priority), the cross-report knowledge base (Assistant page already has the surface, marked Preview), and approval workflow (In Review status is live).</p>
+    </div>
+  </div>
+
+  <h3 style="margin:0 0 4px">10 · Open questions</h3>
+  <div style="display:flex;flex-direction:column;gap:7px;max-width:760px">
+    <div style="display:flex;gap:10px;padding:10px 12px;border:1px solid var(--color-divider);font-size:13px;line-height:1.6"><span style="font-family:var(--font-heading);font-weight:600;color:var(--color-accent-700);flex:none">01</span><span>Document numbering — is <span style="font-family:ui-monospace,Menlo,monospace;font-size:11.5px">GSO-YYMM###x00</span> right, and what does the <span style="font-family:ui-monospace,Menlo,monospace;font-size:11.5px">x00</span> suffix increment on? I assumed revision.</span></div>
+    <div style="display:flex;gap:10px;padding:10px 12px;border:1px solid var(--color-divider);font-size:13px;line-height:1.6"><span style="font-family:var(--font-heading);font-weight:600;color:var(--color-accent-700);flex:none">02</span><span>Your report has a Q&amp;A block that the brief did not mention. I kept it as a first-class part of §6 — should it be its own numbered section in the Word template?</span></div>
+    <div style="display:flex;gap:10px;padding:10px 12px;border:1px solid var(--color-divider);font-size:13px;line-height:1.6"><span style="font-family:var(--font-heading);font-weight:600;color:var(--color-accent-700);flex:none">03</span><span>Who signs off a report as Final — the owner, or a Manager? The prototype has “Submit for Review” and In Review, which implies a second person.</span></div>
+    <div style="display:flex;gap:10px;padding:10px 12px;border:1px solid var(--color-divider);font-size:13px;line-height:1.6"><span style="font-family:var(--font-heading);font-weight:600;color:var(--color-accent-700);flex:none">04</span><span>Should the appendix caption language ever be Chinese, for captions taken from supplier signage?</span></div>
+  </div>
+
+</div>
+
+</x-dc>
+</body>
+</html>

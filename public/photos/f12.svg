@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 420" width="640" height="420" role="img" aria-label="Heat aging oven used for insulation ageing tests">
+  <defs>
+    <pattern id="grid" width="34" height="34" patternUnits="userSpaceOnUse">
+      <path d="M34 0H0v34" fill="none" stroke="#d6ebff" stroke-width="1"/>
+    </pattern>
+  </defs>
+  <rect width="640" height="420" fill="#e9e9ea"/>
+  <rect width="640" height="420" fill="url(#grid)"/>
+  <g fill="none" stroke="#94bce3" stroke-width="1.5">
+    <path d="M92 300h456M120 300V170l84 56v-56l84 56v-56l84 56v-56l84 56V128h48v172"/>
+  </g>
+  <g font-family="Barlow Condensed, system-ui, sans-serif" fill="#2c455d">
+    <text x="30" y="48" font-size="15" font-weight="600" letter-spacing="1.4">F12 · TESTING</text>
+  </g>
+  <g font-family="Barlow, system-ui, sans-serif" fill="#416180" font-size="15">
+    <text x="30" y="348"><tspan x="30" dy="0">Heat aging oven used for</tspan><tspan x="30" dy="19">insulation ageing tests</tspan></text>
+  </g>
+  <text x="30" y="396" font-family="Barlow, system-ui, sans-serif" font-size="11.5" letter-spacing="1.2" fill="#7a7a7d">PLACEHOLDER — REPLACE WITH THE VISIT PHOTOGRAPH</text>
+  <g stroke="#1d1f20" stroke-opacity="0.55" stroke-width="1">
+    <path d="M12 6v12M6 12h12M628 6v12M622 12h12M12 402v12M6 408h12M628 402v12M622 408h12"/>
+  </g>
+  <rect x="0.5" y="0.5" width="639" height="419" fill="none" stroke="#1d1f20" stroke-opacity="0.16"/>
+</svg>
