@@ -244,6 +244,12 @@ figure { margin: 0; }
 
 .btn-icon { width: 36px; height: 36px; padding: 0; }
 .btn-block { width: 100%; }
+
+/* Size variants. These must live here rather than as Tailwind utilities:
+   `.btn` is declared unlayered, so it beats anything in @layer utilities no
+   matter the specificity, and a `text-[12.5px]` class would silently lose. */
+.btn-default { min-height: 36px; }
+.btn-toolbar { min-height: 36px; font-size: 12.5px; }
 .btn-compact { font-size: 12px; padding: 3px 9px; min-height: 0; }
 
 /* ═════════════════════════════════════════════════════════════════════════
@@ -497,4 +503,38 @@ select.input { padding-right: 6px; }
   clip: rect(0, 0, 0, 0);
   white-space: nowrap;
   border: 0;
+}
+
+/* ═════════════════════════════════════════════════════════════════════════
+   Sidebar item hover — README §2. Idle rows lift to 6% white; the active row
+   keeps its own 11% fill and is excluded.
+   ═════════════════════════════════════════════════════════════════════════ */
+
+.sidebar-item:not([aria-current="page"]):hover {
+  background: rgba(255, 255, 255, 0.06) !important;
+  color: #fff !important;
+}
+
+/* ═════════════════════════════════════════════════════════════════════════
+   Login — README §1.1. Two columns at 1.15fr / 1fr. Below 900px the left
+   identity panel is dropped and the card centres ([INFERRED] in the handoff).
+   ═════════════════════════════════════════════════════════════════════════ */
+
+.login-grid {
+  display: grid;
+  grid-template-columns: 1.15fr 1fr;
+}
+
+@media (max-width: 900px) {
+  .login-grid { grid-template-columns: 1fr; }
+  .login-panel { display: none; }
+}
+
+/* ═════════════════════════════════════════════════════════════════════════
+   Editor section navigator row hover — README §5. Rows tint to accent-100 on
+   hover; the selected row already carries that fill.
+   ═════════════════════════════════════════════════════════════════════════ */
+
+.section-nav-row:not([aria-current="page"]):hover {
+  background: var(--rule-hover);
 }
