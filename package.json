@@ -16,7 +16,8 @@
     "gen:placeholders": "node scripts/generate-photo-placeholders.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
-    "seed": "node --env-file=.env.local scripts/seed.mjs"
+    "seed": "node --env-file=.env.local scripts/seed.mjs",
+    "validate:backend": "node --env-file=.env.local scripts/validate-backend.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.9.1",
