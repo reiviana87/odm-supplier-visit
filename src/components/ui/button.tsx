@@ -184,11 +184,48 @@ export function IconButton({
       type={type}
       aria-label={label}
       title={label}
-      className={cn("btn", VARIANT_CLASS[variant], "p-0", className)}
-      style={{ width: size, height: size, minHeight: size }}
+      className={cn("btn", VARIANT_CLASS[variant], className)}
+      // `padding` is set here, not with a `p-0` utility: globals.css declares
+      // `.btn` unlayered, so its padding outranks anything in @layer utilities
+      // and would crush the glyph to a sliver inside a 28px square.
+      style={{ width: size, height: size, minHeight: size, padding: 0, flex: "none" }}
       {...rest}
     >
-      <Icon name={name} size={glyph ?? (size <= 24 ? 13 : 14)} />
+      <Icon
+        name={name}
+        size={glyph ?? (size <= 24 ? 13 : 14)}
+        style={{ flex: "none" }}
+      />
     </button>
+  );
+}
+
+export type IconButtonLinkProps = IconButtonOwnProps &
+  Omit<ComponentPropsWithoutRef<typeof Link>, keyof IconButtonOwnProps>;
+
+/** An `IconButton` that navigates. Same square, same labelling requirement. */
+export function IconButtonLink({
+  label,
+  name,
+  variant = "ghost",
+  size = 28,
+  iconSize: glyph,
+  className,
+  ...rest
+}: IconButtonLinkProps) {
+  return (
+    <Link
+      aria-label={label}
+      title={label}
+      className={cn("btn", VARIANT_CLASS[variant], className)}
+      style={{ width: size, height: size, minHeight: size, padding: 0, flex: "none" }}
+      {...rest}
+    >
+      <Icon
+        name={name}
+        size={glyph ?? (size <= 24 ? 13 : 14)}
+        style={{ flex: "none" }}
+      />
+    </Link>
   );
 }
