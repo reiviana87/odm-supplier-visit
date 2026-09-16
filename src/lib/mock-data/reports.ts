@@ -121,6 +121,51 @@ export const REPORTS: readonly ReportSummary[] = [
 /** Screenshot 02 — the line under the "Reports" title. */
 export const REPORTS_PAGE_SUBTITLE = "18 visit reports · 5 open · 11 exported to DOCX";
 
+/**
+ * Period label, ISO visit date and creation timestamp per report.
+ *
+ * `createdAt` follows the same local-time convention as `lastUpdatedAt` above,
+ * and tells the only story the rest of the seed supports: a report is opened on
+ * the visit day, in the evening, and edited afterwards. GSO-2608002x00 is the
+ * exception — TESK's visit is still ahead (Oct 08), so its report was opened in
+ * advance of it.
+ */
+const REPORT_DETAIL: Record<
+  string,
+  { period: string; visitDateIso: string; createdAt: string }
+> = {
+  "gso-2608001x00": {
+    period: "August 2026",
+    visitDateIso: "2026-08-12",
+    createdAt: "2026-08-12T18:05:00",
+  },
+  "gso-2608002x00": {
+    period: "October 2026",
+    visitDateIso: "2026-10-08",
+    createdAt: "2026-09-09T09:15:00",
+  },
+  "gso-2607003x00": {
+    period: "July 2026",
+    visitDateIso: "2026-07-21",
+    createdAt: "2026-07-21T19:30:00",
+  },
+  "gso-2607004x00": {
+    period: "July 2026",
+    visitDateIso: "2026-07-23",
+    createdAt: "2026-07-23T17:50:00",
+  },
+  "gso-2606002x00": {
+    period: "June 2026",
+    visitDateIso: "2026-06-18",
+    createdAt: "2026-06-18T18:20:00",
+  },
+  "gso-2605001x00": {
+    period: "May 2026",
+    visitDateIso: "2026-05-14",
+    createdAt: "2026-05-14T17:15:00",
+  },
+};
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Supplier snapshots — README §8.3. A report reads the frozen copy, never the
 // live supplier row.
@@ -270,36 +315,38 @@ const HUATONG_PRODUCT_ROWS: ProductRow[] = [
 ];
 
 /**
- * Prototype `targets`. The §5 card in the prototype carries six labelled fields
- * (Target Product · Model / Product Family · Application · Expected Market ·
- * Technical Requirements · Comments); `TargetProduct` holds `model` plus one
- * `description`, so the remaining labelled values are folded into
- * `description` verbatim, one labelled line each.
+ * Prototype `targets` (lines 2536..2539), field for field: the §5 card carries
+ * six labelled values — Target Product · Model / Product Family · Application ·
+ * Expected Market · Technical Requirements · Comments — and `TargetProduct` now
+ * holds each of them separately, so nothing has to be folded into one string.
+ *
+ * The prototype's per-card image caption has no home on `TargetProduct`; it
+ * belongs to the photo, and photos are Phase 4.
  */
 const HUATONG_TARGET_PRODUCTS: TargetProduct[] = [
   {
     id: "tp-1",
+    name: "RHW-2 submersible pump cable",
     model: "14×4C+14×4C / 10×4C+14×4C",
-    description: [
-      "Target product: RHW-2 submersible pump cable",
-      "Application: Submersible pump power supply",
-      "Expected market: North America (US, CA)",
-      "Technical requirements: UL 44 / CSA C22.2, 600–2000 V, 90 °C wet rating, OD per EPAC drawing",
-      "Comments: Alternative 7+1 core design under evaluation; jacket thickness deviation pending EPAC approval.",
-    ].join("\n"),
+    application: "Submersible pump power supply",
+    expectedMarket: "North America (US, CA)",
+    technicalRequirements:
+      "UL 44 / CSA C22.2, 600–2000 V, 90 °C wet rating, OD per EPAC drawing",
+    comments:
+      "Alternative 7+1 core design under evaluation; jacket thickness deviation pending EPAC approval.",
     photoId: "f07",
+    sortOrder: 0,
   },
   {
     id: "tp-2",
+    name: "2PNCT portable pump cable",
     model: "3C×3.5 mm² / 4C×5.5 mm²",
-    description: [
-      "Target product: 2PNCT portable pump cable",
-      "Application: Portable dewatering pumps",
-      "Expected market: Japan",
-      "Technical requirements: JIS C 3306, 600 V, rubber sheath",
-      "Comments: Second-phase qualification. Sample request not yet issued.",
-    ].join("\n"),
+    application: "Portable dewatering pumps",
+    expectedMarket: "Japan",
+    technicalRequirements: "JIS C 3306, 600 V, rubber sheath",
+    comments: "Second-phase qualification. Sample request not yet issued.",
     photoId: null,
+    sortOrder: 1,
   },
 ];
 
@@ -333,9 +380,10 @@ export const HUATONG_REPORT: Report = {
   // The editor header reads 69% (screenshot 04 / 05) while the reports table
   // reads 68% (screenshot 02); both are approved captures of the prototype.
   completion: 69,
-  period: "August 2026",
+  period: REPORT_DETAIL["gso-2608001x00"].period,
   reportOwner: "Reinaldo Alves",
   members: ["Reinaldo Alves", "Corrado Braconi", "Xu Jianping"],
+  createdAt: REPORT_DETAIL["gso-2608001x00"].createdAt,
   startTime: "09:30",
   endTime: "16:45",
   project: "RHW-2 alternative source (EPAC)",
@@ -367,16 +415,6 @@ function emptySections(): ReportSections {
   };
 }
 
-/** Period label + ISO visit date for the five list-level reports. */
-const REPORT_DETAIL: Record<string, { period: string; visitDateIso: string }> = {
-  "gso-2608001x00": { period: "August 2026", visitDateIso: "2026-08-12" },
-  "gso-2608002x00": { period: "October 2026", visitDateIso: "2026-10-08" },
-  "gso-2607003x00": { period: "July 2026", visitDateIso: "2026-07-21" },
-  "gso-2607004x00": { period: "July 2026", visitDateIso: "2026-07-23" },
-  "gso-2606002x00": { period: "June 2026", visitDateIso: "2026-06-18" },
-  "gso-2605001x00": { period: "May 2026", visitDateIso: "2026-05-14" },
-};
-
 /**
  * GSO-2608001x00 returns the written report. The other five return a shell:
  * real header metadata and a real supplier snapshot, but an empty body — they
@@ -398,6 +436,7 @@ export function getReport(id: string): Report | undefined {
     period: detail.period,
     reportOwner: summary.employee,
     members: [summary.employee],
+    createdAt: detail.createdAt,
     startTime: null,
     endTime: null,
     project: null,

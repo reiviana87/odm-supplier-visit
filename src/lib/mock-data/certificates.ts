@@ -9,6 +9,10 @@
  * strings in the domain model, so a value the supplier did not provide is stored as
  * an empty string and the UI renders the em dash. `fileName` is `null` when no copy
  * was collected — the table then shows "No copy collected".
+ *
+ * `notes` is `null` throughout: the prototype's `CERTS` rows carry six columns and
+ * none of them is a remark. The field exists for what a reviewer writes against a
+ * certificate once the table is editable, not for a caption invented here.
  */
 
 import type { Supplier, SupplierCertificate } from "@/types/domain";
@@ -22,6 +26,8 @@ const HUATONG_CERTIFICATES: SupplierCertificate[] = [
     expirationDate: "17 Mar 2027",
     status: "valid",
     fileName: "ISO9001_Huatong.pdf",
+    notes: null,
+    sortOrder: 0,
   },
   {
     id: "huatong-cert-2",
@@ -31,6 +37,8 @@ const HUATONG_CERTIFICATES: SupplierCertificate[] = [
     expirationDate: "15 Jun 2028",
     status: "valid",
     fileName: "ISO14001_Huatong.pdf",
+    notes: null,
+    sortOrder: 1,
   },
   {
     id: "huatong-cert-3",
@@ -40,6 +48,8 @@ const HUATONG_CERTIFICATES: SupplierCertificate[] = [
     expirationDate: "15 Jun 2028",
     status: "valid",
     fileName: "ISO45001_Huatong.pdf",
+    notes: null,
+    sortOrder: 2,
   },
   {
     id: "huatong-cert-4",
@@ -49,6 +59,8 @@ const HUATONG_CERTIFICATES: SupplierCertificate[] = [
     expirationDate: "",
     status: "valid",
     fileName: "UL_Listing_E508812.pdf",
+    notes: null,
+    sortOrder: 3,
   },
   {
     id: "huatong-cert-5",
@@ -58,6 +70,8 @@ const HUATONG_CERTIFICATES: SupplierCertificate[] = [
     expirationDate: "",
     status: "valid",
     fileName: "CSA_LL229410.pdf",
+    notes: null,
+    sortOrder: 4,
   },
   {
     id: "huatong-cert-6",
@@ -67,6 +81,8 @@ const HUATONG_CERTIFICATES: SupplierCertificate[] = [
     expirationDate: "04 Apr 2029",
     status: "valid",
     fileName: "CNAS_L14092.pdf",
+    notes: null,
+    sortOrder: 5,
   },
   {
     id: "huatong-cert-7",
@@ -76,6 +92,8 @@ const HUATONG_CERTIFICATES: SupplierCertificate[] = [
     expirationDate: "",
     status: "not_evidenced",
     fileName: null,
+    notes: null,
+    sortOrder: 6,
   },
 ];
 
@@ -87,7 +105,8 @@ export const CERTIFICATES_BY_SUPPLIER: Record<string, SupplierCertificate[]> = {
 /**
  * README §1.7 — a supplier with no collected copies lists the certifications it
  * declared on its data sheet: `Declared` badge, em-dash number and dates, and
- * "No copy collected" in the file column.
+ * "No copy collected" in the file column. The order of the data-sheet field is
+ * the order shown, so `sortOrder` follows the split.
  */
 export function declaredCertificates(supplier: Supplier): SupplierCertificate[] {
   if (!supplier.certifications) return [];
@@ -104,5 +123,7 @@ export function declaredCertificates(supplier: Supplier): SupplierCertificate[] 
       expirationDate: "",
       status: "declared" as const,
       fileName: null,
+      notes: null,
+      sortOrder: index,
     }));
 }

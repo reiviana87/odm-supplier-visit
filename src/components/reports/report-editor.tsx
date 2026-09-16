@@ -6,7 +6,7 @@ import { EditorHeader } from "@/components/reports/editor-header";
 import { EditorRail, type RailPanel } from "@/components/reports/sources-rail";
 import { SectionNavigator } from "@/components/reports/section-navigator";
 import { useToast } from "@/components/ui/toast";
-import { useAutosave } from "@/lib/autosave/use-autosave";
+import { useAutosave, type AutosaveOutcome } from "@/lib/autosave/use-autosave";
 import { reportCompletion, sectionCompletion } from "@/lib/reports/completion";
 import type { Report, ReportPhoto, SectionId } from "@/types/domain";
 
@@ -50,12 +50,14 @@ export function ReportEditor({
   );
 
   /**
-   * Phase 1 transport. Resolving immediately exercises the real
-   * saving → saved → idle path so the indicator is honest about what it is
-   * showing; Phase 2 replaces this with the section PATCH.
+   * Placeholder transport. The real one — `saveSection` from
+   * `@/lib/data/report-actions`, with the row version for optimistic
+   * concurrency — is wired in the editor persistence pass; this keeps the
+   * indicator exercising its real saving → saved → idle path until then.
    */
-  const save = useCallback(async () => {
+  const save = useCallback(async (): Promise<AutosaveOutcome> => {
     await Promise.resolve();
+    return { status: "saved" };
   }, []);
 
   /**

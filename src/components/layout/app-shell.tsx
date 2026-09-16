@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState, type ReactNode } from "react";
 
+import { MockModeBanner } from "@/components/layout/mock-mode-banner";
 import { NewReportModal } from "@/components/reports/new-report-modal";
 import { signOut } from "@/lib/auth/actions";
 import type { Profile } from "@/types/domain";
@@ -48,6 +49,8 @@ export function AppShell({
 
         <div className="flex min-w-0 flex-1 flex-col">
           <TopBar onNewReport={() => setNewReportOpen(true)} />
+          {/* Renders nothing once a Supabase project is connected. */}
+          <MockModeBanner />
           <div className="min-w-0 flex-1">{children}</div>
         </div>
       </div>

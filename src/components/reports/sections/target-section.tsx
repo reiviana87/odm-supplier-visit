@@ -20,10 +20,9 @@ import { AiActionsRow, aiActionMessage } from "./prose-section";
  * One card per target product: the six labelled fields on the left, the 196px
  * image slot on the right, then the shared General Notes box.
  *
- * `TargetProduct` stores `model` plus a single `description` holding the
- * remaining labelled values, one per line (see `mock-data/reports.ts`), so the
- * card reads them back into the approved field set rather than showing the
- * folded block as raw text.
+ * `TargetProduct` carries each of those six values as its own field, so the card
+ * binds to them directly. Edits stay in component state — §5 persistence is the
+ * report data layer's job, not this file's.
  */
 
 const TARGET_AI_ACTIONS = [
@@ -37,53 +36,26 @@ const KICKER = {
   textTransform: "uppercase",
 } as const;
 
-interface TargetFields {
-  name: string;
-  model: string;
-  application: string;
-  market: string;
-  requirements: string;
-  comments: string;
-}
+/** The six labelled values of the approved card, in card order. */
+type TargetFields = Pick<
+  TargetProduct,
+  | "name"
+  | "model"
+  | "application"
+  | "expectedMarket"
+  | "technicalRequirements"
+  | "comments"
+>;
 
-const PREFIXES: ReadonlyArray<[key: keyof TargetFields, prefix: string]> = [
-  ["name", "target product:"],
-  ["application", "application:"],
-  ["market", "expected market:"],
-  ["requirements", "technical requirements:"],
-  ["comments", "comments:"],
-];
-
-/** Splits the folded `description` back into the card's labelled fields. */
 function readFields(product: TargetProduct): TargetFields {
-  const fields: TargetFields = {
-    name: "",
+  return {
+    name: product.name,
     model: product.model,
-    application: "",
-    market: "",
-    requirements: "",
-    comments: "",
+    application: product.application,
+    expectedMarket: product.expectedMarket,
+    technicalRequirements: product.technicalRequirements,
+    comments: product.comments,
   };
-  const extra: string[] = [];
-
-  for (const line of product.description.split("\n")) {
-    const trimmed = line.trim();
-    if (trimmed.length === 0) continue;
-
-    const match = PREFIXES.find(([, prefix]) =>
-      trimmed.toLowerCase().startsWith(prefix),
-    );
-    if (match) {
-      fields[match[0]] = trimmed.slice(match[1].length).trim();
-    } else {
-      extra.push(trimmed);
-    }
-  }
-
-  if (extra.length > 0) {
-    fields.comments = [fields.comments, ...extra].filter(Boolean).join("\n");
-  }
-  return fields;
 }
 
 function TargetCard({
@@ -149,14 +121,16 @@ function TargetCard({
           </Field>
           <Field label="Expected Market">
             <Input
-              value={fields.market}
-              onChange={(event) => patch("market", event.target.value)}
+              value={fields.expectedMarket}
+              onChange={(event) => patch("expectedMarket", event.target.value)}
             />
           </Field>
           <Field label="Technical Requirements" style={{ gridColumn: "span 2" }}>
             <Input
-              value={fields.requirements}
-              onChange={(event) => patch("requirements", event.target.value)}
+              value={fields.technicalRequirements}
+              onChange={(event) =>
+                patch("technicalRequirements", event.target.value)
+              }
             />
           </Field>
           <Field label="Comments" style={{ gridColumn: "span 2" }}>

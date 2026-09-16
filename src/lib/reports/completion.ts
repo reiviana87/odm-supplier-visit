@@ -1,16 +1,38 @@
 /**
- * Report completion — README §6.2.
+ * Report completion — README §6.2, Phase 2 §20.
  *
- * Thirteen section predicates, one per navigator row. The percentage is
- * `passing ÷ 13`, rounded: **derived, never stored**, so the dashboard, the
- * reports table and the editor all read this one computation.
+ * ## The algorithm
+ *
+ * Thirteen predicates, one per navigator row, each worth exactly the same as
+ * every other — there is no weighting, because a report with nine written
+ * sections is nine thirteenths done however long the paragraphs are:
+ *
+ * | Section          | Passes when                                            |
+ * |------------------|--------------------------------------------------------|
+ * | General          | always — the header is written when the report is created |
+ * | 1. Purpose       | more than 40 characters of prose                        |
+ * | 2. Company       | always — copied from the supplier snapshot (README §8.3) |
+ * | 3. Overview      | more than 40 characters of prose                        |
+ * | 4. Main Products | more than 40 characters of prose (the table is optional) |
+ * | 4.1 Product img. | at least one image in the region, every one captioned   |
+ * | 5. Target        | at least one target product                             |
+ * | 6. Visit         | at least 8 observations (the Q&A block is optional)     |
+ * | 7. Certificates  | always — taken from the supplier record                 |
+ * | 8. Partners      | more than 40 characters of prose                        |
+ * | 8.1 Partner img. | at least one image in the region, every one captioned   |
+ * | 9. Conclusion    | more than 40 characters of prose                        |
+ * | 10. Appendix     | at least one image in the region, every one captioned   |
+ *
+ * The percentage is `passing ÷ 13`, rounded. It is **derived, never stored**:
+ * the dashboard, the reports table, the editor header and the export modal all
+ * call this one computation, so none of them can drift from another or go stale
+ * against the row they describe.
  *
  * The predicates are transcribed from README §6.2 and from `doneMap()` in the
  * approved prototype (`design-handoff/ODM Supplier Visit.dc.html`, lines
- * 2811–2830). They are deliberately literal — a prose section is measured by
- * raw `String.length`, an image counts as captioned when its caption is
- * non-empty — because the approved captures were produced by exactly this
- * arithmetic.
+ * 2811–2830). Phase 2 §20 tightens one thing about them: prose is measured
+ * after the whitespace and the empty rich-text wrapper are taken off, so the
+ * number never claims a section is written when nothing was typed into it.
  *
  * Pure: no I/O, no clock, no store access.
  */
@@ -37,8 +59,33 @@ const MIN_OBSERVATIONS = 8;
 // Predicate helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * What is left of a section body once the things that are not writing are
+ * removed — Phase 2 §20: "avoid pretending that whitespace or an empty
+ * rich-text wrapper counts as complete".
+ *
+ * Plain text only loses its surrounding whitespace. The markup pass is here
+ * because README §15 has these bodies becoming rich text: an editor stores an
+ * untouched field as `<p></p>`, `<p><br></p>` or `<p>&nbsp;</p>`, all of which
+ * would otherwise sail past a 40-character threshold on tags alone.
+ */
+function meaningfulProse(text: string): string {
+  const trimmed = text.trim();
+  if (trimmed.length === 0) {
+    return "";
+  }
+
+  return trimmed
+    .replace(/<br\s*\/?>/gi, "")
+    .replace(/&nbsp;|&#160;/gi, " ")
+    // Only the outer wrapper, and only when the body is wrapped: the tags of a
+    // paragraph are not prose, but its text is.
+    .replace(/^<p\b[^>]*>([\s\S]*)<\/p>$/i, "$1")
+    .trim();
+}
+
 function hasProse(text: string): boolean {
-  return text.length > MIN_PROSE_LENGTH;
+  return meaningfulProse(text).length > MIN_PROSE_LENGTH;
 }
 
 /**
@@ -46,13 +93,16 @@ function hasProse(text: string): boolean {
  * and a caption on every one of them. An AI caption still awaiting acceptance
  * lives in `aiCaption` and leaves `caption` empty, so it does not count
  * (README §11 — an AI proposal is not content until accepted).
+ *
+ * The caption is trimmed for the same reason the prose is (Phase 2 §20), and to
+ * agree with the editor's own "no caption" warning, which already trims.
  */
 function everyImageCaptioned(
   photos: readonly ReportPhoto[],
   region: ImageRegion,
 ): boolean {
   const inRegion = photos.filter((photo) => photo.region === region);
-  return inRegion.length > 0 && inRegion.every((photo) => photo.caption.length > 0);
+  return inRegion.length > 0 && inRegion.every((photo) => photo.caption.trim().length > 0);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
