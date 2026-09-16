@@ -48,7 +48,7 @@ const PHASE = {
   arrange: "Automatic arrangement arrives in Phase 3",
   reorder: "Drag to reorder arrives in Phase 3",
   move: "Moving photos between sections arrives in Phase 3",
-  delete: "Deleting a photo arrives with report persistence in Phase 2",
+  delete: "Deleting a photo arrives with the photo manager",
 } as const;
 
 /** The locally edited fields of a caption. Everything else stays as seeded. */

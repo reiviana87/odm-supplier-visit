@@ -157,7 +157,7 @@ export function VisitMode({
     switch (action) {
       case "photo":
         setScreen("camera");
-        toast("Live camera lands in Phase 2 — the viewfinder shows a sample frame");
+        toast("Live camera lands with the photo pipeline — the viewfinder shows a sample frame");
         return;
       case "note":
         setScreen("note");
@@ -169,10 +169,10 @@ export function VisitMode({
         setScreen("report");
         return;
       case "upload":
-        toast("Uploading files from the field lands in Phase 2");
+        toast("Uploading files from the field lands with the photo pipeline");
         return;
       case "voice":
-        toast("Voice capture and transcript analysis land in Phase 2");
+        toast("Voice capture and transcript analysis land with transcript support");
         return;
     }
   }

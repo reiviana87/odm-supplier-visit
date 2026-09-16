@@ -119,7 +119,7 @@ export function SettingsTabs({
    ═══════════════════════════════════════════════════════════════════════════ */
 
 const SAVE_MESSAGE =
-  "Saving settings lands in Phase 2 — your changes are still on screen but were not stored.";
+  "Saving settings lands with the settings store — your changes are still on screen but were not stored.";
 
 /**
  * The design system's `.radio` (hidden input + `.dot`) is not part of this
@@ -229,7 +229,7 @@ function ProfilePanel() {
           style={{ fontSize: 12.5 }}
           onClick={() =>
             toast(
-              "Profile photos land in Phase 2 — nothing was uploaded from this device.",
+              "Profile photos land with file storage — nothing was uploaded from this device.",
             )
           }
         >
@@ -418,7 +418,7 @@ function MembersPanel() {
           variant="secondary"
           style={{ fontSize: 12.5 }}
           onClick={() =>
-            toast("Invitations land in Phase 2 — no message was sent.")
+            toast("Invitations land with team administration — no message was sent.")
           }
         >
           <Icon name="plus" size={13} />
@@ -486,7 +486,7 @@ function MembersPanel() {
                     style={{ width: "auto", fontSize: 12, minHeight: 28 }}
                     onChange={(event) =>
                       toast(
-                        `Role changes land in Phase 2 — ${member.fullName} is still ${
+                        `Role changes land with team administration — ${member.fullName} is still ${
                           ROLE_LABELS[member.role]
                         }, not ${ROLE_LABELS[event.target.value as UserRole]}.`,
                       )
@@ -508,7 +508,7 @@ function MembersPanel() {
                     label={`Actions — ${member.fullName}`}
                     style={{ color: "var(--color-neutral-600)" }}
                     onClick={() =>
-                      toast("Member administration lands in Phase 2.")
+                      toast("Member administration lands with team administration.")
                     }
                   />
                 </Td>

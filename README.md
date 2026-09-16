@@ -234,9 +234,23 @@ and caption. Drop the real `f01.jpg … f22.jpg` into `public/photos/` and chang
 
 ## Next phase
 
-**Phase 2 — report persistence.** Wire the report editor to Supabase: section patches
-behind the existing autosave engine, the supplier snapshot copy on report creation, and
-the reports/suppliers lists reading real rows instead of `src/lib/mock-data`. The build
-order the handoff recommends (§25 "Priority screens") continues from there: photo
-managers → appendix layout → export → transcript analysis and conclusion → Visit Mode
-capture.
+**Phase 2 — supplier and report persistence — is implemented.** The data layer in
+`src/lib/data` is the only module that queries Supabase; every screen reads through it.
+Section patches run behind the existing autosave engine and match on the row version, so
+a losing write surfaces as a conflict the user resolves rather than a silent overwrite.
+The supplier snapshot is frozen server-side by `create_report_with_snapshot`.
+
+**It has never run against a database.** No Supabase project is connected, so migrations
+`0003`–`0005`, the role-based RLS in `0004`, the creation transaction, the `updated_at`
+triggers and the whole write path are validated by reading only. `npm run seed` is
+likewise unexecuted. Connect a project and work through
+[`supabase/SEED.md`](supabase/SEED.md) before trusting any of it.
+
+While no project is connected the app runs on the seeded data in `src/lib/mock-data`:
+reads fall back inside the data layer, writes refuse with a visible message, and a banner
+says so. Nothing outside `src/lib/data`, `src/lib/auth` and that banner knows mock mode
+exists.
+
+**Next.** The build order the handoff recommends (§25 "Priority screens") continues from
+here: photo managers → appendix layout → export → transcript analysis and conclusion →
+Visit Mode capture.

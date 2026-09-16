@@ -189,7 +189,7 @@ export function CameraScreen({
           <Button
             variant="secondary"
             onClick={() =>
-              toast("The photo library picker lands in Phase 2 with the upload pipeline")
+              toast("The photo library picker lands with the photo upload pipeline")
             }
             style={{ fontSize: 13, minHeight: 46 }}
           >

@@ -299,7 +299,7 @@ export function TemplatesTable() {
                         label={`Set ${template.version} active`}
                         onClick={() =>
                           toast(
-                            "Switching the active template lands in Phase 2 — every future export still uses the current version.",
+                            "Switching the active template lands with the export pipeline — every future export still uses the current version.",
                           )
                         }
                       />
@@ -319,7 +319,7 @@ export function TemplatesTable() {
                         label={`Archive ${template.version}`}
                         onClick={() =>
                           toast(
-                            `Archiving a template version lands in Phase 2 — ${template.version} is unchanged.`,
+                            `Archiving a template version lands with the export pipeline — ${template.version} is unchanged.`,
                           )
                         }
                       />

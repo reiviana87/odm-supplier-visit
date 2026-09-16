@@ -548,3 +548,72 @@ describe("relativeLabel", () => {
     expect(relativeLabel("not a timestamp", now)).toBe("");
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// README §8.3 — the frozen snapshot
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * The guarantee the whole report format rests on: a report states what was true
+ * on the visit date. Editing the supplier master afterwards corrects the
+ * database, and must leave every report already written about it alone.
+ *
+ * `rowToReport` is where that is decided, so it is where it can be proved
+ * without a database: the snapshot has to come from the row's stored
+ * `company_information`, never from the joined supplier.
+ */
+describe("the supplier snapshot does not follow the live record", () => {
+  const now = new Date(2026, 7, 12, 20, 0);
+  const frozen = {
+    supplierId: "huatong",
+    takenAt: "2026-08-12T01:00:00.000Z",
+    shortName: "HEBEI HUATONG",
+    legalName: "Hebei Huatong Wires & Cables Group Co., Ltd.",
+    establishedYear: "1999",
+    companyCapital: "CNY 1,200,000,000",
+    employees: "6,000",
+    factorySizeM2: "200,000 m²",
+    certifications: "ISO9001, ISO14001",
+    productionCapacity: null,
+    presidentName: "Xu Longbo",
+    websiteUrl: "https://www.hebei-huatong.com",
+    country: "China",
+    region: "Hebei",
+    city: "Tangshan",
+    address: "Luanzhou Economic Development Zone",
+    tel: "+86 315 7112 888",
+    trackRecordEbara: null,
+  };
+
+  const row = reportRow({
+    company_information: frozen,
+    // What the master record says *today* — a different head count, a new
+    // address, a renamed company. None of it may reach the report.
+    suppliers: { short_name: "HUATONG GROUP" },
+  });
+
+  const report = rowToReport(row, { sections: EMPTY_SECTION_ROWS }, now);
+
+  it("reads every company field from the stored snapshot", () => {
+    expect(report.supplierSnapshot).toEqual(frozen);
+  });
+
+  it("keeps the name the supplier had at the visit", () => {
+    expect(report.supplierSnapshot.shortName).toBe("HEBEI HUATONG");
+    expect(report.supplierSnapshot.shortName).not.toBe(row.suppliers?.short_name);
+  });
+
+  it("survives a snapshot written by an older build", () => {
+    const partial = rowToReport(
+      reportRow({ company_information: { supplierId: "huatong", shortName: "HEBEI HUATONG" } }),
+      { sections: EMPTY_SECTION_ROWS },
+      now,
+    );
+
+    // Missing keys read as null rather than throwing: a stored document
+    // outlives the code that wrote it.
+    expect(partial.supplierSnapshot.shortName).toBe("HEBEI HUATONG");
+    expect(partial.supplierSnapshot.employees).toBeNull();
+    expect(partial.supplierSnapshot.city).toBeNull();
+  });
+});
