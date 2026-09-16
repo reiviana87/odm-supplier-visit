@@ -158,6 +158,10 @@ export interface Supplier {
   shortName: string;
   /** Legal name as printed on the data sheet. */
   legalName: string;
+  /** The name the supplier trades under domestically (中文名). */
+  chineseName: string | null;
+  /** EBARA's own reference for this supplier. Unique when set. */
+  supplierCode: string | null;
   establishedYear: string | null;
   companyCapital: string | null;
   employees: string | null;
@@ -179,6 +183,18 @@ export interface Supplier {
   contactEmail: string | null;
   trackRecordEbara: string | null;
 
+  // ── Commercial and capability profile (Phase 2 §4) ────────────────────────
+  /** Free text as declared, e.g. "CNY 7.53 billion (2025)". */
+  annualRevenue: string | null;
+  /** "Public (listed)", "Private", "Joint venture", "State-owned", … */
+  ownershipType: string | null;
+  /** Free-text list, e.g. "Europe, North America, Japan". */
+  mainMarkets: string | null;
+  /** Prose. Distinct from `productCategories`, which is the tag list. */
+  mainProducts: string | null;
+  /** Prose — casting, machining, winding, assembly, in-house test benches… */
+  productionCapabilities: string | null;
+
   // Derived / application fields
   productCategories: string | null;
   status: SupplierStatus;
@@ -189,6 +205,16 @@ export interface Supplier {
   /** Photo ids from past visits, shown on the Overview tab when non-empty. */
   visitPhotoIds: string[];
   contacts: SupplierContact[];
+
+  // ── Lifecycle ─────────────────────────────────────────────────────────────
+  createdAt: string;
+  updatedAt: string;
+  /**
+   * Set when the supplier was archived. Phase 2 §33: a supplier that has been
+   * visited is never hard-deleted — archiving keeps its reports readable and
+   * takes it out of the pickers.
+   */
+  archivedAt: string | null;
 }
 
 export interface SupplierContact {
@@ -198,6 +224,9 @@ export interface SupplierContact {
   email: string;
   phone: string;
   wechat: string;
+  /** The sales contact shown on the list and the detail header. At most one. */
+  isPrimary: boolean;
+  sortOrder: number;
 }
 
 export interface SupplierCertificate {
@@ -208,6 +237,8 @@ export interface SupplierCertificate {
   expirationDate: string;
   status: CertificateStatus;
   fileName: string | null;
+  notes: string | null;
+  sortOrder: number;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -261,6 +292,7 @@ export interface Report extends ReportSummary {
   period: string;
   reportOwner: string;
   members: string[];
+  createdAt: string;
   startTime: string | null;
   endTime: string | null;
   project: string | null;
@@ -268,6 +300,24 @@ export interface Report extends ReportSummary {
   productCategory: string | null;
   supplierSnapshot: SupplierSnapshot;
   sections: ReportSections;
+}
+
+/**
+ * One persisted section row, as the editor needs it in order to save.
+ *
+ * The rendering shape stays `ReportSections` below — flat and easy to read.
+ * This is the save-path shape: it carries the `version` the row was loaded at,
+ * which the update matches on, so a save detects that another session wrote
+ * first instead of silently overwriting it (Phase 2 §18).
+ */
+export interface SectionRecord {
+  sectionId: SectionId;
+  body: string;
+  /** README §25 — the §4 product table and §6 Q&A block can be excluded. */
+  excluded: boolean;
+  /** Incremented by the database on every successful patch. */
+  version: number;
+  updatedAt: string;
 }
 
 /** The editable body of a report, one entry per content-bearing section. */
@@ -298,9 +348,20 @@ export interface Observation {
 
 export interface TargetProduct {
   id: string;
+  /** What the product is called, e.g. "RHW-2 submersible pump cable". */
+  name: string;
+  /** Model or product family, e.g. "100-80-160". */
   model: string;
-  description: string;
+  /** Where it is used — the application or duty. */
+  application: string;
+  /** The market the part is intended for, e.g. "North America (UL)". */
+  expectedMarket: string;
+  /** Standards, ratings and tolerances the part has to meet. */
+  technicalRequirements: string;
+  /** Free notes carried into §5 of the report. */
+  comments: string;
   photoId: string | null;
+  sortOrder: number;
 }
 
 export interface ProductRow {
