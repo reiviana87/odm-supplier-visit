@@ -58,9 +58,20 @@ export function ReportEditor({
     await Promise.resolve();
   }, []);
 
+  /**
+   * README §7 — a report that was saved earlier rests at "Last saved 11:42",
+   * not at an empty slot. The seed is the stored row's own timestamp, so the
+   * indicator states a fact rather than inventing one.
+   */
+  const storedLastSaved = useMemo(() => {
+    const parsed = new Date(report.lastUpdatedAt);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }, [report.lastUpdatedAt]);
+
   const { state: autosave, saveNow, retry } = useAutosave({
     value: report.sections,
     save,
+    lastSavedAt: storedLastSaved,
   });
 
   /**

@@ -1,5 +1,6 @@
 "use client";
 
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useMemo, useState, type JSX } from "react";
 
 import { Blueprint } from "@/components/ui/blueprint";
@@ -82,16 +83,41 @@ export function PhotoSection({
 
   const [edits, setEdits] = useState<Record<string, CaptionEdit>>({});
   const [selected, setSelected] = useState<ReadonlySet<string>>(NO_SELECTION);
-  const [view, setView] = useState<AppendixView>("photos");
+
+  /**
+   * README §1 lists the Layout & Preview tab as its own address —
+   * `/reports/:id/appendix?view=layout` — so the tab lives in the URL rather
+   * than in component state. That makes it linkable, back-button-able and the
+   * target the dashboard and the export warnings can point at.
+   */
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const view: AppendixView =
+    searchParams.get("view") === "layout" ? "layout" : "photos";
+
+  const setView = useCallback(
+    (next: AppendixView) => {
+      const params = new URLSearchParams(searchParams.toString());
+      if (next === "layout") {
+        params.set("view", "layout");
+      } else {
+        params.delete("view");
+      }
+      const query = params.toString();
+      router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+    },
+    [pathname, router, searchParams],
+  );
 
   // Sections share this component, so a region change has to drop the edits
-  // and the selection of the region being left behind.
+  // and the selection of the region being left behind. The view does not need
+  // resetting: it lives in the query string, which a section navigation drops.
   const [renderedRegion, setRenderedRegion] = useState<ImageRegion>(region);
   if (renderedRegion !== region) {
     setRenderedRegion(region);
     setEdits({});
     setSelected(NO_SELECTION);
-    setView("photos");
   }
 
   const source = useMemo(

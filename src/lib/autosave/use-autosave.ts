@@ -129,6 +129,14 @@ export interface UseAutosaveOptions<T> {
   debounceMs?: number;
   /** Default `true`. `false` for a read-only report: nothing is scheduled. */
   enabled?: boolean;
+  /**
+   * When the record was last persisted, from the stored row. Seeds the resting
+   * indicator so a freshly-opened report reads "Last saved 11:42" instead of an
+   * empty slot — the approved resting state in README §7 and
+   * screenshots/04-report-editor.png. Omit it and the slot stays empty until
+   * this session saves something, which is the honest state for a new record.
+   */
+  lastSavedAt?: Date | null;
 }
 
 export interface UseAutosaveResult {
@@ -144,10 +152,11 @@ export function useAutosave<T>({
   save,
   debounceMs = 400,
   enabled = true,
+  lastSavedAt = null,
 }: UseAutosaveOptions<T>): UseAutosaveResult {
   const [state, setState] = useState<AutosaveState>({
     status: "idle",
-    lastSavedAt: null,
+    lastSavedAt,
     queuedCount: 0,
   });
 

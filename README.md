@@ -197,6 +197,30 @@ and have extension points in the code, but no behaviour:
 - n8n, SharePoint, Teams and email workflows
 - Advanced per-report permissions, knowledge-base search, supplier comparison, scorecards
 
+### Where the spec and the approved capture disagree
+
+Four places where README.md and the screenshots point different ways. Each was
+resolved deliberately; raise any of them if the design intent was the other one.
+
+| Point | Handoff §  | Approved capture | Implemented | Why |
+|---|---|---|---|---|
+| Supplier list default order | §19 "default company asc" | seed order (HUATONG first) | company asc | §19 states the behaviour explicitly; the capture shows a prototype with no sorting implemented |
+| §1 word count | — | "2 paragraphs · 118 words" | computed live (87) | 118 is a static label in the prototype; 87 is the real count of the text it displays |
+| Report completion | §6.2 "derived, never stored" | 68% on the list, 69% in the editor | 69% everywhere | one computation, as §6.2 requires — the two captured figures cannot both be right |
+| Visit Mode supplier name | §17 "19px" | 22px | 22px | the prototype is the measured source; §17's figure does not match it |
+
+Two more worth knowing:
+
+- **Filter bar wrapping.** The reports filter bar carries the prototype's exact
+  `min-width: 112px` and `flex-wrap: wrap`. At exactly 1280px — the shell's
+  minimum — "Product Category" wraps to a second line; at the width the
+  screenshots were captured it does not. That is the approved CSS behaving as
+  written, not a layout defect.
+- **Touch targets in Visit Mode.** Every button is ≥44px per §24, but the
+  caption starters (30px) and observation category chips (~31px) are the
+  approved sizes from screenshots 17b and 18. The approved geometry was kept
+  rather than silently enlarged; §24 and those captures genuinely conflict.
+
 ### The visit photographs
 
 The handoff references `assets/photos/f01–f22.jpg` but states they are **not bundled**

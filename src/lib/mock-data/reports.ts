@@ -29,6 +29,12 @@ import { SUPPLIERS } from "./suppliers";
 // ─────────────────────────────────────────────────────────────────────────────
 // Reports list — prototype `REPORTS` (row = document №, supplier, visit date,
 // employee, status, completion, last-edit label, location).
+//
+// `lastUpdatedAt` is written WITHOUT a timezone suffix on purpose: these are
+// seed values, and a local-time string renders as the wall-clock time the
+// approved captures show (11:42 in the editor header) no matter where the app
+// is opened. Rows coming from Supabase carry real UTC timestamps and are
+// rendered in the viewer's own zone, which is the correct behaviour there.
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const REPORTS: readonly ReportSummary[] = [
@@ -43,7 +49,7 @@ export const REPORTS: readonly ReportSummary[] = [
     status: "draft",
     completion: 68,
     lastUpdatedLabel: "2h ago",
-    lastUpdatedAt: "2026-09-11T11:42:00Z",
+    lastUpdatedAt: "2026-09-11T11:42:00",
   },
   {
     id: "gso-2608002x00",
@@ -56,7 +62,7 @@ export const REPORTS: readonly ReportSummary[] = [
     status: "draft",
     completion: 41,
     lastUpdatedLabel: "Yesterday",
-    lastUpdatedAt: "2026-09-10T17:05:00Z",
+    lastUpdatedAt: "2026-09-10T17:05:00",
   },
   {
     id: "gso-2607003x00",
@@ -69,7 +75,7 @@ export const REPORTS: readonly ReportSummary[] = [
     status: "in_review",
     completion: 92,
     lastUpdatedLabel: "Sep 10",
-    lastUpdatedAt: "2026-09-10T08:40:00Z",
+    lastUpdatedAt: "2026-09-10T08:40:00",
   },
   {
     id: "gso-2607004x00",
@@ -82,7 +88,7 @@ export const REPORTS: readonly ReportSummary[] = [
     status: "final",
     completion: 100,
     lastUpdatedLabel: "Jul 30",
-    lastUpdatedAt: "2026-07-30T14:10:00Z",
+    lastUpdatedAt: "2026-07-30T14:10:00",
   },
   {
     id: "gso-2606002x00",
@@ -95,7 +101,7 @@ export const REPORTS: readonly ReportSummary[] = [
     status: "final",
     completion: 100,
     lastUpdatedLabel: "Jun 29",
-    lastUpdatedAt: "2026-06-29T10:25:00Z",
+    lastUpdatedAt: "2026-06-29T10:25:00",
   },
   {
     id: "gso-2605001x00",
@@ -108,7 +114,7 @@ export const REPORTS: readonly ReportSummary[] = [
     status: "archived",
     completion: 100,
     lastUpdatedLabel: "May 28",
-    lastUpdatedAt: "2026-05-28T15:40:00Z",
+    lastUpdatedAt: "2026-05-28T15:40:00",
   },
 ];
 
