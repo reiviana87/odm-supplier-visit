@@ -1,10 +1,9 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState, type ReactNode } from "react";
+import type { ReactNode } from "react";
 
 import { MockModeBanner } from "@/components/layout/mock-mode-banner";
-import { NewReportModal } from "@/components/reports/new-report-modal";
 import { signOut } from "@/lib/auth/actions";
 import type { Profile } from "@/types/domain";
 
@@ -32,7 +31,6 @@ export function AppShell({
   children: ReactNode;
 }) {
   const router = useRouter();
-  const [newReportOpen, setNewReportOpen] = useState(false);
 
   return (
     <div style={{ minHeight: "100vh", background: "var(--color-bg)" }}>
@@ -48,21 +46,16 @@ export function AppShell({
         />
 
         <div className="flex min-w-0 flex-1 flex-col">
-          <TopBar onNewReport={() => setNewReportOpen(true)} />
+          {/* README §1 — /reports/new is the wizard's own address. The picker
+              it opens with is read on the server, so the shell sends the user
+              to the route rather than mounting a second copy of the wizard on
+              every screen with nothing to populate it from. */}
+          <TopBar onNewReport={() => router.push("/reports/new")} />
           {/* Renders nothing once a Supabase project is connected. */}
           <MockModeBanner />
           <div className="min-w-0 flex-1">{children}</div>
         </div>
       </div>
-
-      <NewReportModal
-        open={newReportOpen}
-        onClose={() => setNewReportOpen(false)}
-        onCreated={(reportId) => {
-          setNewReportOpen(false);
-          router.push(`/reports/${reportId}/purpose`);
-        }}
-      />
     </div>
   );
 }

@@ -3,7 +3,8 @@
  *
  * Transcribed from the approved prototype's `CERTS` array. Only HEBEI HUATONG has
  * collected certificate copies; every other supplier shows its *declared*
- * certifications, which `declaredCertificates()` derives from the data-sheet field.
+ * certifications, which `declaredCertificates()` in `@/lib/suppliers/display`
+ * derives from the data-sheet field.
  *
  * `SupplierCertificate.number`, `.issueDate` and `.expirationDate` are non-optional
  * strings in the domain model, so a value the supplier did not provide is stored as
@@ -15,7 +16,7 @@
  * certificate once the table is editable, not for a caption invented here.
  */
 
-import type { Supplier, SupplierCertificate } from "@/types/domain";
+import type { SupplierCertificate } from "@/types/domain";
 
 const HUATONG_CERTIFICATES: SupplierCertificate[] = [
   {
@@ -102,28 +103,3 @@ export const CERTIFICATES_BY_SUPPLIER: Record<string, SupplierCertificate[]> = {
   huatong: HUATONG_CERTIFICATES,
 };
 
-/**
- * README §1.7 — a supplier with no collected copies lists the certifications it
- * declared on its data sheet: `Declared` badge, em-dash number and dates, and
- * "No copy collected" in the file column. The order of the data-sheet field is
- * the order shown, so `sortOrder` follows the split.
- */
-export function declaredCertificates(supplier: Supplier): SupplierCertificate[] {
-  if (!supplier.certifications) return [];
-
-  return supplier.certifications
-    .split(",")
-    .map((name) => name.trim())
-    .filter((name) => name.length > 0)
-    .map((name, index) => ({
-      id: `${supplier.id}-declared-${index + 1}`,
-      name,
-      number: "",
-      issueDate: "",
-      expirationDate: "",
-      status: "declared" as const,
-      fileName: null,
-      notes: null,
-      sortOrder: index,
-    }));
-}

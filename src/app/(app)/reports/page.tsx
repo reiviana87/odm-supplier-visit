@@ -1,154 +1,94 @@
-"use client";
-
-import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
-
-import { NewReportModal } from "@/components/reports/new-report-modal";
-import {
-  ReportsFilterBar,
-  type ReportStatusFilter,
-} from "@/components/reports/reports-filter-bar";
-import {
-  ReportsTable,
-  type ReportRow,
-} from "@/components/reports/reports-table";
-import { Button } from "@/components/ui/button";
+import { ReportsFilterBar } from "@/components/reports/reports-filter-bar";
+import { ReportsHeaderActions } from "@/components/reports/reports-header-actions";
+import { reportsSubtitle } from "@/components/reports/reports-subtitle";
+import { ReportsTable } from "@/components/reports/reports-table";
 import { PageHeader, PageShell } from "@/components/ui/page-header";
-import { useToast } from "@/components/ui/toast";
-import {
-  HUATONG_REPORT,
-  REPORTS,
-  REPORTS_PAGE_SUBTITLE,
-  REPORT_PHOTOS,
-  getReport,
-} from "@/lib/mock-data";
-import { reportCompletion } from "@/lib/reports/completion";
-import type { ReportSummary } from "@/types/domain";
+import { EmptyState } from "@/components/ui/states";
+import { getCurrentUser } from "@/lib/auth/session";
+import { countReports, listReports } from "@/lib/data/reports";
+import { listSuppliers } from "@/lib/data/suppliers";
+import { REPORT_STATUSES, type ReportStatus, type Supplier } from "@/types/domain";
 
 /**
  * Reports list — README §1.3, §19. Prototype lines 271..350;
  * approved capture `design-handoff/screenshots/02-reports-list.png`.
  *
- * The screen is a client component: the search box, the Status filter, the
- * five row actions, the delete confirmation and the create wizard are all
- * interactive, and the rows themselves are static seed data with nothing to
- * fetch. `loading.tsx` still covers the segment while its payload arrives.
- */
-
-/**
- * The database total behind the pager and the header line. The seed holds the
- * first page; `REPORTS_PAGE_SUBTITLE` states the same 18 in prose, and there is
- * no numeric export to read it from, so it is named here once.
- */
-const TOTAL_REPORTS = 18;
-
-/**
- * README §6.2 — completion is derived from the thirteen section predicates,
- * never stored.
+ * A Server Component: the rows, the counts and the create wizard's supplier
+ * list are read through the data layer here (Phase 2 §24) and handed down. The
+ * search box and the Status filter carry their state in the URL, so the query
+ * that produced a screen is the query the address bar states, a filtered list
+ * survives a reload and the database — not the browser — does the filtering.
  *
- * Only GSO-2608001x00 has a section body and a photo set seeded, so it is the
- * one row that can be derived today (69% — the figure the editor header shows).
- * The other five reports have deliberately empty bodies, and deriving them
- * would report every one of them at 23% rather than the approved figures, so
- * they fall back to the summary's stored percentage. When Phase 2 persists the
- * section bodies the derived value takes over for every row and this fallback
- * goes away.
+ * `loading.tsx` covers the segment while this runs.
  */
-function completionFor(summary: ReportSummary): number {
-  const report = getReport(summary.id);
-  if (!report || report.id !== HUATONG_REPORT.id) {
-    return summary.completion;
-  }
-  return reportCompletion(report, REPORT_PHOTOS);
+
+interface ReportsPageProps {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }
 
-const ROWS: readonly ReportRow[] = REPORTS.map((summary) => ({
-  id: summary.id,
-  documentNumber: summary.documentNumber,
-  supplierShortName: summary.supplierShortName,
-  location: summary.location,
-  visitDate: summary.visitDate,
-  employee: summary.employee,
-  status: summary.status,
-  completion: completionFor(summary),
-  lastUpdatedLabel: summary.lastUpdatedLabel,
-}));
-
-function matchesQuery(row: ReportRow, query: string): boolean {
-  const haystack =
-    `${row.documentNumber} ${row.supplierShortName} ${row.location} ${row.employee}`.toLowerCase();
-  return haystack.includes(query);
+/** The first value of a repeated parameter; `""` when it is absent. */
+function readParam(
+  params: Record<string, string | string[] | undefined>,
+  key: string,
+): string {
+  const raw = params[key];
+  if (Array.isArray(raw)) return raw[0] ?? "";
+  return raw ?? "";
 }
 
-export default function ReportsPage() {
-  const router = useRouter();
-  const { toast } = useToast();
+function toStatus(value: string): ReportStatus | undefined {
+  return (REPORT_STATUSES as readonly string[]).includes(value)
+    ? (value as ReportStatus)
+    : undefined;
+}
 
-  const [query, setQuery] = useState("");
-  const [status, setStatus] = useState<ReportStatusFilter>("all");
-  const [createOpen, setCreateOpen] = useState(false);
+export default async function ReportsPage({ searchParams }: ReportsPageProps) {
+  const params = await searchParams;
+  const query = readParam(params, "q").trim();
+  const status = toStatus(readParam(params, "status"));
 
-  const term = query.trim().toLowerCase();
-  const rows = useMemo(
-    () =>
-      ROWS.filter(
-        (row) =>
-          (status === "all" || row.status === status) &&
-          (term === "" || matchesQuery(row, term)),
-      ),
-    [status, term],
-  );
+  const [list, counts, suppliers, profile] = await Promise.all([
+    listReports({ query: query || undefined, status }),
+    countReports(),
+    listSuppliers(),
+    getCurrentUser(),
+  ]);
+
+  const rows = list.ok ? list.data : [];
+  const supplierOptions: readonly Supplier[] = suppliers.ok ? suppliers.data : [];
+  // The suggestion `nextDocumentNumber` makes is only a suggestion: the blur
+  // check asks the database, and the unique constraint is what finally decides.
+  // Feeding it the numbers on screen is therefore enough.
+  const takenNumbers = rows.map((report) => report.documentNumber);
 
   return (
     <PageShell>
       <PageHeader
         title="Reports"
-        subtitle={REPORTS_PAGE_SUBTITLE}
+        // Stated only when it could be read. A count the server refused is not
+        // worth guessing at from one page of rows.
+        subtitle={counts.ok ? reportsSubtitle(counts.data) : undefined}
         spacing={18}
         actions={
-          <>
-            <Button
-              variant="secondary"
-              icon="download"
-              onClick={() =>
-                toast("Export list (XLSX) arrives with the export pipeline (Phase 5)")
-              }
-            >
-              Export list (XLSX)
-            </Button>
-            <Button
-              variant="primary"
-              icon="plus"
-              onClick={() => setCreateOpen(true)}
-            >
-              New Visit Report
-            </Button>
-          </>
+          <ReportsHeaderActions
+            suppliers={supplierOptions}
+            currentUserName={profile?.fullName ?? ""}
+            existingDocumentNumbers={takenNumbers}
+          />
         }
       />
 
-      <ReportsFilterBar
-        query={query}
-        onQueryChange={setQuery}
-        status={status}
-        onStatusChange={setStatus}
-      />
+      <ReportsFilterBar query={query} status={status ?? "all"} />
 
-      <ReportsTable
-        rows={rows}
-        openReportId={HUATONG_REPORT.id}
-        totalCount={TOTAL_REPORTS}
-        filtered={term !== "" || status !== "all"}
-      />
-
-      <NewReportModal
-        open={createOpen}
-        onClose={() => setCreateOpen(false)}
-        onCreated={(reportId) => {
-          setCreateOpen(false);
-          router.push(`/reports/${reportId}/purpose`);
-        }}
-      />
+      {list.ok ? (
+        <ReportsTable
+          rows={rows}
+          totalCount={counts.ok ? counts.data.total : rows.length}
+          filtered={query !== "" || status !== undefined}
+        />
+      ) : (
+        <EmptyState variant="page" message={list.error.message} />
+      )}
     </PageShell>
   );
 }

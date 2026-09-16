@@ -2,6 +2,7 @@
 
 import { useId, useState } from "react";
 
+import { useSectionDraft } from "@/components/reports/section-draft";
 import { Blueprint } from "@/components/ui/blueprint";
 import { CertificateStatusBadge, Tag } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -10,11 +11,7 @@ import { Icon } from "@/components/ui/icon";
 import { EmptyState, EMPTY_STATE_COPY } from "@/components/ui/states";
 import { UploadZone } from "@/components/ui/upload-zone";
 import { useToast } from "@/components/ui/toast";
-import {
-  CERTIFICATES_BY_SUPPLIER,
-  declaredCertificates,
-  getSupplier,
-} from "@/lib/mock-data";
+import { declaredCertificates } from "@/lib/suppliers/display";
 import type { Report, SupplierCertificate } from "@/types/domain";
 
 /**
@@ -35,6 +32,13 @@ const OCR_READ_LINE = "Read from photo · 86% — check the dates";
 
 /** The one card kept in the unconfirmed state (prototype: certs 3..5 are pending). */
 const UNCONFIRMED_DEMO_INDEX = 3;
+
+/**
+ * §7 lists the supplier's certificates (README §8.3), so the place to add one
+ * is the supplier record — which is where the writer for them lives.
+ */
+const CERTIFICATES_ARE_THE_SUPPLIERS =
+  "Certificates belong to the supplier record — add one on the supplier’s Certificates tab and it appears here.";
 
 const OCR_PHASE = "Reading certificate photos arrives in Phase 4";
 
@@ -235,15 +239,31 @@ function CertificateCard({
   );
 }
 
-export function CertificatesSection({ report }: { report: Report }) {
+export function CertificatesSection({
+  report,
+  certificates: collected,
+}: {
+  report: Report;
+  /**
+   * The copies actually collected for this supplier, read by the page through
+   * the data layer. `undefined` means the read was not attempted or failed;
+   * an empty array means there genuinely are none, and the section falls back
+   * to what the snapshot says was declared.
+   */
+  certificates?: readonly SupplierCertificate[];
+}) {
   const { toast } = useToast();
   const notesId = useId();
-  const [note, setNote] = useState(report.sections.certificateNote);
+  // Section 7's note is this section's body row, autosaved by the shell.
+  const { draft, setBody } = useSectionDraft("certificates");
 
-  const supplier = getSupplier(report.supplierSnapshot.supplierId);
-  const collected = CERTIFICATES_BY_SUPPLIER[report.supplierSnapshot.supplierId];
+  // README §1.7 — with no collected copies the section lists what the data
+  // sheet declared, derived from the frozen snapshot rather than the live
+  // supplier row so the report keeps saying what was true at the visit.
   const certificates: readonly SupplierCertificate[] =
-    collected ?? (supplier ? declaredCertificates(supplier) : []);
+    collected && collected.length > 0
+      ? collected
+      : declaredCertificates(report.supplierSnapshot);
 
   const withPhoto = certificates.filter(
     (certificate) => certificate.fileName !== null,
@@ -281,7 +301,7 @@ export function CertificatesSection({ report }: { report: Report }) {
           size="compact"
           icon="plus"
           style={{ background: "var(--color-bg)" }}
-          onClick={() => toast("Adding a certificate by hand arrives in Phase 2")}
+          onClick={() => toast(CERTIFICATES_ARE_THE_SUPPLIERS)}
         >
           Add manually
         </Button>
@@ -308,7 +328,7 @@ export function CertificatesSection({ report }: { report: Report }) {
             <Button
               size="compact"
               icon="plus"
-              onClick={() => toast("Adding a certificate by hand arrives in Phase 2")}
+              onClick={() => toast(CERTIFICATES_ARE_THE_SUPPLIERS)}
             >
               Add Certificate
             </Button>
@@ -353,8 +373,8 @@ export function CertificatesSection({ report }: { report: Report }) {
       <Textarea
         prose
         id={notesId}
-        value={note}
-        onChange={(event) => setNote(event.target.value)}
+        value={draft.body}
+        onChange={(event) => setBody(event.target.value)}
         minHeight={96}
         placeholder="What was verified on site, what is still missing…"
       />

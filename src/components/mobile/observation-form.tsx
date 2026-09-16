@@ -11,17 +11,18 @@ import { Field, Textarea } from "@/components/ui/field";
  *   title      Barlow Condensed 600 19px
  *   category   10px/.12em uppercase caption over chips: padding 7px 12px,
  *              13px, 1px divider — selected takes a var(--color-accent) border
- *              on an accent-100 ground
+ *              on an accent-100 ground; painted as approved, with a transparent
+ *              44px+ hit box (`.vm-hit`)
  *   text       textarea min-height 110 · 14px / 1.55
  *   photo      64×52 thumbnail beside a 46px "Attach another" button
  *   actions    Cancel (flex 1) · Save (flex 2), both 48px
  *
- * Save files the observation into §6 with its category. Phase 1 keeps the
- * visit's captures in local component state — there is no store behind this
- * yet — so Save reports what it did and returns home.
+ * Save files the observation into §6 with its category. The form owns the two
+ * fields and hands them up; the write itself belongs to `VisitMode`, which
+ * holds the rest of the §6 list that has to travel with them.
  *
- * The text area opens with the observation shown in the approved capture; the
- * screenshot is of a filled form, not an empty one.
+ * The text area opens empty, with the approved capture's sentence as its
+ * placeholder — see `TEXT_PLACEHOLDER` for why that moved in Phase 2.
  */
 
 /** The six categories, in prototype order (line 3305). */
@@ -34,7 +35,19 @@ const CATEGORIES: readonly string[] = [
   "Other",
 ];
 
-const SEEDED_TEXT =
+/**
+ * The prototype hard-codes this sentence as the textarea's VALUE (line 2282)
+ * and screenshot 18 is a capture of the filled form. In Phase 2 it is the
+ * placeholder instead.
+ *
+ * The reason is the Save button: in Phase 1 it went nowhere, so a pre-filled
+ * example cost nothing. It now writes into §6 of a real report, and one tap on
+ * a form nobody typed into would file a sentence about CNC machining centres as
+ * the author's own observation of a cable factory. A report is evidence of a
+ * visit. The approved copy still shows in the field, at the approved size and
+ * position, as the prompt it always was rather than as the user's words.
+ */
+const TEXT_PLACEHOLDER =
   "Supplier currently operates five CNC machining centers for stainless-steel components.";
 
 /** 10px / .12em uppercase — the group caption (prototype line 2274). */
@@ -57,20 +70,24 @@ const FIELD_LABEL: CSSProperties = {
 export interface ObservationFormProps {
   /** The photo already attached to this observation. */
   photo: { src: string; caption: string };
+  /** The write is in flight — README §5's in-progress control state. */
+  saving?: boolean;
   /** Open the camera to attach another frame. */
   onAttach: () => void;
   onCancel: () => void;
-  onSave: () => void;
+  /** Hands the two captured fields up; the caller owns the write. */
+  onSave: (values: { category: string; text: string }) => void;
 }
 
 export function ObservationForm({
   photo,
+  saving = false,
   onAttach,
   onCancel,
   onSave,
 }: ObservationFormProps) {
   const [category, setCategory] = useState(CATEGORIES[0]);
-  const [text, setText] = useState(SEEDED_TEXT);
+  const [text, setText] = useState("");
   const categoryLabelId = useId();
   const photoLabelId = useId();
 
@@ -91,10 +108,19 @@ export function ObservationForm({
       <div id={categoryLabelId} style={GROUP_LABEL}>
         Category
       </div>
+      {/* rowGap 14, not the approved 7, is the other half of `.vm-hit`: it puts
+          the wrapped rows exactly one hit box apart so the 44px targets tile
+          instead of overlapping. The column gap stays at the approved 7. */}
       <div
         role="group"
         aria-labelledby={categoryLabelId}
-        style={{ display: "flex", flexWrap: "wrap", gap: 7, marginBottom: 16 }}
+        style={{
+          display: "flex",
+          flexWrap: "wrap",
+          columnGap: 7,
+          rowGap: 14,
+          marginBottom: 16,
+        }}
       >
         {CATEGORIES.map((option) => {
           const selected = option === category;
@@ -104,7 +130,12 @@ export function ObservationForm({
               type="button"
               aria-pressed={selected}
               onClick={() => setCategory(option)}
-              className={selected ? undefined : "vm-chip"}
+              // `vm-hit` — the confirmed touch-target decision: the chip keeps
+              // its approved ~31px appearance and gains a transparent ±7px hit
+              // box (45px effective) instead of being enlarged. The selected
+              // chip paints its own border and ground, so it drops `vm-chip`
+              // (the hover rule) but keeps the hit area. See phone-frame.tsx.
+              className={selected ? "vm-hit" : "vm-chip vm-hit"}
               style={{
                 padding: "7px 12px",
                 border: `1px solid ${
@@ -126,6 +157,7 @@ export function ObservationForm({
         <Textarea
           value={text}
           onChange={(event) => setText(event.target.value)}
+          placeholder={TEXT_PLACEHOLDER}
           style={{ minHeight: 110, fontSize: 14, lineHeight: 1.55 }}
         />
       </Field>
@@ -162,13 +194,15 @@ export function ObservationForm({
         <Button
           variant="secondary"
           onClick={onCancel}
+          disabled={saving}
           style={{ fontSize: 14, minHeight: 48, flex: 1 }}
         >
           Cancel
         </Button>
         <Button
           variant="primary"
-          onClick={onSave}
+          loading={saving}
+          onClick={() => onSave({ category, text })}
           style={{ fontSize: 14, minHeight: 48, flex: 2 }}
         >
           Save

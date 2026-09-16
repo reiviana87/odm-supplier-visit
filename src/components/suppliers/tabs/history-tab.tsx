@@ -15,22 +15,25 @@ import {
   Thead,
   Tr,
 } from "@/components/ui/table";
-import { REPORTS } from "@/lib/mock-data";
-import type { Supplier } from "@/types/domain";
+import type { ReportSummary } from "@/types/domain";
 
 /**
  * Supplier Visit History tab — README §1.7 / §21, prototype lines 624..652.
  *
- * Every visit report bound to this supplier. The document number is the
+ * Every visit report bound to this supplier, newest edit first — the page
+ * reads them with `listReports({ supplierId })`. The document number is the
  * affordance: it opens the report editor at General Information.
  *
  * Rendered on the client only because `EMPTY_STATE_COPY` is exported from the
  * `"use client"` states module: read from a Server Component it arrives as a
  * client reference and the approved sentence renders blank.
  */
-export function HistoryTab({ supplier }: { supplier: Supplier }) {
-  const reports = REPORTS.filter((report) => report.supplierId === supplier.id);
+export interface HistoryTabProps {
+  /** This supplier's reports, as the data layer ordered them. */
+  reports: readonly ReportSummary[];
+}
 
+export function HistoryTab({ reports }: HistoryTabProps) {
   if (reports.length === 0) {
     return (
       <EmptyState

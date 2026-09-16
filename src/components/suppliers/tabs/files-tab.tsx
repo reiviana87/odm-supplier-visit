@@ -9,7 +9,7 @@ import type { Supplier } from "@/types/domain";
  * Supplier Files tab — README §1.7 / §21, prototype lines 591..623.
  *
  * Presentations, catalogues, licences and quality documents collected before a
- * visit. Phase 1 has no supplier document storage, so every supplier is empty:
+ * visit. There is no supplier document storage yet, so every supplier is empty:
  * the approved empty state sits above the drop zone and the drop zone reports
  * which phase brings the upload pipeline rather than pretending to store a
  * file.
@@ -32,7 +32,7 @@ export function FilesTab({ supplier }: { supplier: Supplier }) {
         multiple
         onFiles={(files) =>
           toast(
-            `Supplier document storage arrives in Phase 2 — ${files.length} file${
+            `Supplier document storage arrives in Phase 4 — ${files.length} file${
               files.length === 1 ? "" : "s"
             } not uploaded for ${supplier.shortName}`,
           )

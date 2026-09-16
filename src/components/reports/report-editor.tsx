@@ -1,44 +1,162 @@
 "use client";
 
-import { useCallback, useMemo, useState, type ReactNode } from "react";
+import { useRouter } from "next/navigation";
+import {
+  useCallback,
+  useMemo,
+  useRef,
+  useState,
+  useTransition,
+  type ReactNode,
+} from "react";
 
+import { ConflictDialog } from "@/components/reports/conflict-dialog";
 import { EditorHeader } from "@/components/reports/editor-header";
+import {
+  SectionDraftProvider,
+  type SectionDraft,
+  type SectionDraftValue,
+} from "@/components/reports/section-draft";
 import { EditorRail, type RailPanel } from "@/components/reports/sources-rail";
 import { SectionNavigator } from "@/components/reports/section-navigator";
 import { useToast } from "@/components/ui/toast";
-import { useAutosave, type AutosaveOutcome } from "@/lib/autosave/use-autosave";
+import {
+  useAutosave,
+  type AutosaveOutcome,
+  type AutosaveSaveContext,
+} from "@/lib/autosave/use-autosave";
+import { getSectionRecord, saveSection, setReportStatus } from "@/lib/data/report-actions";
+import { sectionBodyOf } from "@/lib/data/report-mappers";
 import { reportCompletion, sectionCompletion } from "@/lib/reports/completion";
-import type { Report, ReportPhoto, SectionId } from "@/types/domain";
+import {
+  SECTIONS,
+  type Report,
+  type ReportPhoto,
+  type SectionId,
+  type SectionRecord,
+} from "@/types/domain";
 
 /**
  * Report editor shell — README §6.1.
  *
  *   Editor body: display flex · align-items stretch
  *                min-height calc(100vh - 156px)
- *   navigator 210 + content + rail 320
+ *                navigator 210 + content + rail 320
  *
  * The writing column is 532px with the rail open and ~840px with it closed
  * (README §2 "Page max width"); tables and photo grids are allowed the full
  * width, so each section decides — this shell only sets the outer padding and
  * the `--writing-column` custom property sections read from.
  *
- * Phase 1 wires the reusable autosave engine to a no-op transport: the state
- * machine, the five indicator states and the flush-on-navigate behaviour are
- * real, the Supabase patch is Phase 2.
+ * ## Why the section editor is keyed
+ *
+ * Each section is its own route, so navigating between them re-renders this
+ * component in place — the draft, the row version and the autosave engine would
+ * all carry over to a section they do not describe. `key={activeSection}` makes
+ * that a remount instead: the pending patch for the section being left is
+ * flushed by the hook's own unmount path, with the section id it was written
+ * for still captured in `save`, and the section being opened starts from its own
+ * stored row. What legitimately outlives a section — which rail panel is open —
+ * is held here, above the key.
  */
 export function ReportEditor({
   report,
+  sections,
   photos,
   activeSection,
   children,
 }: {
   report: Report;
+  /** The stored rows, carrying the `version` each autosave patches against. */
+  sections: readonly SectionRecord[];
   photos: readonly ReportPhoto[];
   activeSection: SectionId;
   children: ReactNode;
 }) {
-  const { toast } = useToast();
   const [railPanel, setRailPanel] = useState<RailPanel | null>("sources");
+
+  const toggleRail = useCallback((panel: RailPanel) => {
+    setRailPanel((current) => (current === panel ? null : panel));
+  }, []);
+
+  const closeRail = useCallback(() => setRailPanel(null), []);
+
+  return (
+    <SectionEditor
+      key={activeSection}
+      report={report}
+      record={sections.find((section) => section.sectionId === activeSection)}
+      photos={photos}
+      activeSection={activeSection}
+      railPanel={railPanel}
+      onToggleRail={toggleRail}
+      onCloseRail={closeRail}
+    >
+      {children}
+    </SectionEditor>
+  );
+}
+
+/** What the user chose in the conflict dialog, while that choice is settling. */
+type Resolution = "reload" | "keep";
+
+/** `serverValue` crosses the transport as `unknown`; this is what it must be. */
+function isSectionDraft(value: unknown): value is SectionDraft {
+  if (typeof value !== "object" || value === null) return false;
+  const candidate = value as Record<string, unknown>;
+  return (
+    typeof candidate.body === "string" && typeof candidate.excluded === "boolean"
+  );
+}
+
+function SectionEditor({
+  report,
+  record,
+  photos,
+  activeSection,
+  railPanel,
+  onToggleRail,
+  onCloseRail,
+  children,
+}: {
+  report: Report;
+  record: SectionRecord | undefined;
+  photos: readonly ReportPhoto[];
+  activeSection: SectionId;
+  railPanel: RailPanel | null;
+  onToggleRail: (panel: RailPanel) => void;
+  onCloseRail: () => void;
+  children: ReactNode;
+}) {
+  const { toast } = useToast();
+  const router = useRouter();
+
+  const [draft, setDraft] = useState<SectionDraft>(() => ({
+    body: record?.body ?? "",
+    excluded: record?.excluded ?? false,
+  }));
+  const [conflictOpen, setConflictOpen] = useState(false);
+  const [resolving, setResolving] = useState<Resolution | undefined>(undefined);
+  const [submitting, startSubmit] = useTransition();
+
+  /**
+   * Phase 2 §18 — the version the next patch is built on. It is seeded from the
+   * stored row and moved on by each acknowledgement, never by a rejection:
+   * re-sending the version the row was loaded at would be refused for as long
+   * as the page stayed open, which is the failure mode this ref exists to
+   * prevent. The hook's own `context.version` wins when it has one, because
+   * after a resolution the hook knows something this ref does not.
+   */
+  const versionRef = useRef(record?.version ?? 1);
+
+  /** Sections whose content is rows or photographs have no body to autosave. */
+  const editable =
+    record !== undefined && sectionBodyOf(report.sections, activeSection) !== null;
+
+  const definition = SECTIONS.find((section) => section.id === activeSection);
+  const sectionLabel = definition
+    ? `${definition.number} ${definition.label}`.trim()
+    : activeSection;
 
   const completion = useMemo(
     () => sectionCompletion(report, photos),
@@ -50,36 +168,151 @@ export function ReportEditor({
   );
 
   /**
-   * Placeholder transport. The real one — `saveSection` from
-   * `@/lib/data/report-actions`, with the row version for optimistic
-   * concurrency — is wired in the editor persistence pass; this keeps the
-   * indicator exercising its real saving → saved → idle path until then.
+   * The autosave transport — one `report_sections` patch, matched on the
+   * version above (Phase 2 §18).
+   *
+   * A `stale` rejection is answered with the row that won the race, read back
+   * through `getSectionRecord`, because that is what the dialog has to describe
+   * before the user can choose between the two. Nothing here adopts the newer
+   * version: doing so would arm the overwrite that §18 asks the user to
+   * authorise.
    */
-  const save = useCallback(async (): Promise<AutosaveOutcome> => {
-    await Promise.resolve();
-    return { status: "saved" };
-  }, []);
+  const save = useCallback(
+    async (
+      value: SectionDraft,
+      context: AutosaveSaveContext,
+    ): Promise<AutosaveOutcome> => {
+      const result = await saveSection({
+        reportId: report.id,
+        sectionId: activeSection,
+        body: value.body,
+        excluded: value.excluded,
+        version: context.version ?? versionRef.current,
+      });
+
+      if (result.ok) {
+        versionRef.current = result.data.version;
+        return {
+          status: "saved",
+          version: result.data.version,
+          updatedAt: result.data.updatedAt,
+        };
+      }
+
+      if (result.error.code !== "stale") {
+        return { status: "error", message: result.error.message };
+      }
+
+      const latest = await getSectionRecord(report.id, activeSection);
+      if (!latest.ok) {
+        // A conflict we cannot describe is still a conflict: the hook stops
+        // either way, and the dialog says only what it was told.
+        return { status: "stale" };
+      }
+
+      return {
+        status: "stale",
+        serverVersion: latest.data.version,
+        serverUpdatedAt: latest.data.updatedAt,
+        serverValue: { body: latest.data.body, excluded: latest.data.excluded },
+      };
+    },
+    [report.id, activeSection],
+  );
 
   /**
-   * README §7 — a report that was saved earlier rests at "Last saved 11:42",
-   * not at an empty slot. The seed is the stored row's own timestamp, so the
-   * indicator states a fact rather than inventing one.
+   * README §7 — a section that was written before rests at "Last saved 11:42",
+   * not at an empty slot. The row's own timestamp, so the indicator states a
+   * fact rather than inventing one.
    */
   const storedLastSaved = useMemo(() => {
-    const parsed = new Date(report.lastUpdatedAt);
+    const parsed = new Date(record?.updatedAt ?? report.lastUpdatedAt);
     return Number.isNaN(parsed.getTime()) ? null : parsed;
-  }, [report.lastUpdatedAt]);
+  }, [record?.updatedAt, report.lastUpdatedAt]);
 
-  const { state: autosave, saveNow, retry } = useAutosave({
-    value: report.sections,
+  const {
+    state: autosave,
+    saveNow,
+    retry,
+    resolveWithServer,
+    resolveWithLocal,
+  } = useAutosave({
+    value: draft,
     save,
+    enabled: editable,
     lastSavedAt: storedLastSaved,
   });
+
+  const setBody = useCallback((body: string) => {
+    setDraft((current) => (current.body === body ? current : { ...current, body }));
+  }, []);
+
+  const setExcluded = useCallback((excluded: boolean) => {
+    setDraft((current) =>
+      current.excluded === excluded ? current : { ...current, excluded },
+    );
+  }, []);
+
+  const sectionDraft: SectionDraftValue = useMemo(
+    () => ({
+      reportId: report.id,
+      sectionId: activeSection,
+      draft,
+      setBody,
+      setExcluded,
+      editable,
+    }),
+    [report.id, activeSection, draft, setBody, setExcluded, editable],
+  );
+
+  /**
+   * "Reload latest version" — the user gave up their own text for the newer
+   * one, so it is re-read before it replaces what is on screen.
+   *
+   * When the row is still at the version the dialog described, the value handed
+   * back is the very object the transport reported, which the hook recognises
+   * and does not send back to the server. When the row has moved on again since
+   * the dialog was drawn, the newer text is taken instead and the next patch
+   * goes out at a version the server will refuse — reopening the conflict with
+   * the current facts, which is honest, rather than overwriting a third version
+   * nobody has seen.
+   */
+  const reloadLatest = useCallback(async () => {
+    setResolving("reload");
+    const latest = await getSectionRecord(report.id, activeSection);
+    setResolving(undefined);
+
+    if (!latest.ok) {
+      // Nothing is resolved and nothing is discarded: the draft is still in the
+      // editor and the dialog is still open to be answered again.
+      toast(latest.error.message, "error");
+      return;
+    }
+
+    const described = autosave.conflict?.serverValue;
+    const adopted =
+      autosave.conflict?.serverVersion === latest.data.version &&
+      isSectionDraft(described)
+        ? described
+        : { body: latest.data.body, excluded: latest.data.excluded };
+
+    versionRef.current = latest.data.version;
+    setDraft(adopted);
+    resolveWithServer();
+    setConflictOpen(false);
+    toast("Reloaded the newer version of this section.");
+  }, [report.id, activeSection, autosave.conflict, resolveWithServer, toast]);
+
+  /** "Keep my changes" — the draft is re-sent at the version it replaces. */
+  const keepMine = useCallback(() => {
+    setConflictOpen(false);
+    resolveWithLocal();
+  }, [resolveWithLocal]);
 
   /**
    * README §6.2 — the navigator shows a warning triangle on sections carrying
    * a blocking issue. Captions are the one predicate that can be partially
-   * satisfied, so it is the one warning Phase 1 can compute honestly.
+   * satisfied, so it is the one warning that can be computed honestly today.
    */
   const warnings = useMemo(() => {
     const result: Partial<Record<SectionId, string>> = {};
@@ -99,9 +332,24 @@ export function ReportEditor({
     return result;
   }, [photos]);
 
-  const toggleRail = useCallback((panel: RailPanel) => {
-    setRailPanel((current) => (current === panel ? null : panel));
-  }, []);
+  /**
+   * Phase 2 §12 — there is no approval workflow. "Submit for Review" is the
+   * status field and nothing else, so the toast says so instead of implying an
+   * approver was notified.
+   */
+  const submitForReview = useCallback(() => {
+    startSubmit(async () => {
+      const result = await setReportStatus(report.id, "in_review");
+      if (!result.ok) {
+        toast(result.error.message, "error");
+        return;
+      }
+      toast(
+        "Status set to In Review — there is no approval step, so anyone with edit access can move it on again.",
+      );
+      router.refresh();
+    });
+  }, [report.id, router, toast]);
 
   return (
     <div>
@@ -111,11 +359,16 @@ export function ReportEditor({
         autosave={autosave}
         onSaveNow={saveNow}
         onRetrySave={retry}
+        onReviewConflict={() => setConflictOpen(true)}
         onPreview={() => toast("Document preview arrives with the DOCX export (Phase 5)")}
-        onToggleSources={() => toggleRail("sources")}
-        onToggleAssistant={() => toggleRail("assistant")}
+        onToggleSources={() => onToggleRail("sources")}
+        onToggleAssistant={() => onToggleRail("assistant")}
         onExport={() => toast("Word export arrives in Phase 5")}
-        onMoreActions={() => toast("Duplicate, archive and delete arrive in Phase 2")}
+        onMoreActions={() =>
+          toast(
+            "Archive a report from the reports list; duplicating one is not built yet.",
+          )
+        }
       />
 
       <div
@@ -128,9 +381,8 @@ export function ReportEditor({
           completion={completion}
           completionPercent={completionPercent}
           warnings={warnings}
-          onSubmitForReview={() =>
-            toast("Review workflow arrives with report persistence (Phase 2)")
-          }
+          submitting={submitting}
+          onSubmitForReview={submitForReview}
         />
 
         <div
@@ -142,13 +394,25 @@ export function ReportEditor({
             ["--writing-column" as string]: railPanel ? "532px" : "840px",
           }}
         >
-          {children}
+          <SectionDraftProvider value={sectionDraft}>
+            {children}
+          </SectionDraftProvider>
         </div>
 
         {railPanel ? (
-          <EditorRail panel={railPanel} onClose={() => setRailPanel(null)} />
+          <EditorRail panel={railPanel} onClose={onCloseRail} />
         ) : null}
       </div>
+
+      <ConflictDialog
+        open={conflictOpen && autosave.status === "conflict"}
+        onDismiss={() => setConflictOpen(false)}
+        onReloadLatest={() => void reloadLatest()}
+        onKeepMine={keepMine}
+        conflict={autosave.conflict}
+        sectionLabel={sectionLabel}
+        pending={resolving}
+      />
     </div>
   );
 }

@@ -5,6 +5,7 @@ import { useMemo } from "react";
 import { Select } from "@/components/ui/field";
 import { FilterBar } from "@/components/ui/filter-bar";
 import { SearchField } from "@/components/ui/search-field";
+import { COUNTRY_OPTIONS, withCurrentValue } from "@/lib/suppliers/supplier-schema";
 import {
   DATA_SHEET_LABELS,
   DATA_SHEET_STATES,
@@ -12,6 +13,11 @@ import {
   SUPPLIER_STATUS_LABELS,
   type Supplier,
 } from "@/types/domain";
+
+import {
+  certificationTokens,
+  type SupplierFilters,
+} from "./supplier-list-filters";
 
 /**
  * Suppliers filter bar — README §1.6, §4 "Filter"; prototype lines 366..375.
@@ -24,82 +30,20 @@ import {
  * is added (that would change the approved row); the accessible name comes from
  * `aria-label`.
  *
- * The option sets are derived from the records actually present, so the bar
- * never offers a filter that returns nothing.
+ * Which filter is answered where is `supplier-list-filters.ts`; this component
+ * only reports what the user picked.
  */
 
-export interface SupplierFilters {
-  /** Free text over name, legal name, location and sales contact. */
-  query: string;
-  /** Exact `country` match; "" = no filter. */
-  country: string;
-  /** Exact `region` match as recorded on the data sheet; "" = no filter. */
-  region: string;
-  /** `SupplierStatus` value; "" = no filter. */
-  status: string;
-  /** One certification token, matched against the declared list; "" = no filter. */
-  certification: string;
-  /** `DataSheetState` value; "" = no filter. */
-  dataSheet: string;
-}
-
-export const EMPTY_SUPPLIER_FILTERS: SupplierFilters = {
-  query: "",
-  country: "",
-  region: "",
-  status: "",
-  certification: "",
-  dataSheet: "",
-};
-
-export function isFilterActive(filters: SupplierFilters): boolean {
-  return Object.values(filters).some((value) => value !== "");
-}
-
-/** "ISO9001, ISO14001, CE" → ["ISO9001", "ISO14001", "CE"]. */
-function certificationTokens(certifications: string | null): string[] {
-  if (!certifications) return [];
-  return certifications
-    .split(",")
-    .map((token) => token.trim())
-    .filter((token) => token.length > 0);
-}
-
-function searchHaystack(supplier: Supplier): string {
-  return [
-    supplier.shortName,
-    supplier.legalName,
-    supplier.city,
-    supplier.region,
-    supplier.country,
-    supplier.contactName,
-    supplier.contactEmail,
-    supplier.certifications,
-  ]
-    .filter((value): value is string => Boolean(value))
-    .join(" ")
-    .toLowerCase();
-}
-
-export function supplierMatchesFilters(
-  supplier: Supplier,
-  filters: SupplierFilters,
-): boolean {
-  const query = filters.query.trim().toLowerCase();
-  if (query.length > 0 && !searchHaystack(supplier).includes(query)) return false;
-  if (filters.country !== "" && supplier.country !== filters.country) return false;
-  if (filters.region !== "" && supplier.region !== filters.region) return false;
-  if (filters.status !== "" && supplier.status !== filters.status) return false;
-  if (filters.dataSheet !== "" && supplier.dataSheetState !== filters.dataSheet) {
-    return false;
-  }
-  if (
-    filters.certification !== "" &&
-    !certificationTokens(supplier.certifications).includes(filters.certification)
-  ) {
-    return false;
-  }
-  return true;
+export interface SuppliersFilterBarProps {
+  /**
+   * The rows the query returned. Region and Certification are refinements over
+   * exactly these records, so their options are derived from them and the bar
+   * never offers a value that would return nothing.
+   */
+  suppliers: readonly Supplier[];
+  filters: SupplierFilters;
+  /** Receives only the changed keys. */
+  onChange: (patch: Partial<SupplierFilters>) => void;
 }
 
 function uniqueSorted(values: readonly (string | null)[]): string[] {
@@ -108,23 +52,11 @@ function uniqueSorted(values: readonly (string | null)[]): string[] {
   ).sort((a, b) => a.localeCompare(b, "en"));
 }
 
-export interface SuppliersFilterBarProps {
-  /** The full record set — the option lists are derived from it. */
-  suppliers: readonly Supplier[];
-  filters: SupplierFilters;
-  /** Receives only the changed keys. */
-  onChange: (patch: Partial<SupplierFilters>) => void;
-}
-
 export function SuppliersFilterBar({
   suppliers,
   filters,
   onChange,
 }: SuppliersFilterBarProps) {
-  const countries = useMemo(
-    () => uniqueSorted(suppliers.map((supplier) => supplier.country)),
-    [suppliers],
-  );
   const regions = useMemo(
     () => uniqueSorted(suppliers.map((supplier) => supplier.region)),
     [suppliers],
@@ -138,6 +70,12 @@ export function SuppliersFilterBar({
       ),
     [suppliers],
   );
+
+  // Country filters the query, so its options cannot come from the rows on
+  // screen — picking "China" would leave China as the only country left to
+  // pick. The approved vocabulary of the supplier form is used instead, plus
+  // whatever country is currently selected.
+  const countries = withCurrentValue(COUNTRY_OPTIONS, filters.country);
 
   return (
     <FilterBar>

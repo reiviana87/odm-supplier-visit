@@ -1,20 +1,23 @@
 import type { ReactNode } from "react";
 
-import { DataSheetBadge, SupplierStatusBadge } from "@/components/ui/badge";
+import { DataSheetBadge, SupplierStatusBadge, Tag } from "@/components/ui/badge";
 import { Blueprint } from "@/components/ui/blueprint";
 import { Breadcrumb } from "@/components/ui/breadcrumb";
 import { ButtonLink } from "@/components/ui/button";
 import { Icon, type IconName } from "@/components/ui/icon";
 import { Tabs } from "@/components/ui/tabs";
-import { supplierInitials } from "@/lib/mock-data";
 import type { Supplier } from "@/types/domain";
+
+import { supplierInitials } from "@/lib/suppliers/display";
+import { SupplierLifecycleActions } from "./supplier-lifecycle-actions";
 
 /**
  * Supplier detail header — README §1.7, prototype lines 426..468.
  *
  * Breadcrumb, the 62px initials square, the identity column (name + status,
- * legal name + data-sheet state, the four-item meta row), the two actions and
- * the six-tab strip. The tab strip is rendered in `href` mode: every tab is a
+ * legal name + data-sheet state, the four-item meta row), the actions and
+ * the six-tab strip. The §33 lifecycle control beside Edit Supplier is the one
+ * client island here; everything else renders on the server. The tab strip is rendered in `href` mode: every tab is a
  * real route (`/suppliers/:id/:tab`), so the tabs are links, not state.
  */
 
@@ -115,6 +118,9 @@ export function SupplierHeader({
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <h3 style={{ margin: 0 }}>{supplier.shortName}</h3>
             <SupplierStatusBadge status={supplier.status} />
+            {/* §33 — an archived record is still readable, and must say so:
+                it is out of every list and picker the user might look in. */}
+            {supplier.archivedAt !== null ? <Tag tone="outline">Archived</Tag> : null}
           </div>
 
           <div
@@ -169,6 +175,11 @@ export function SupplierHeader({
         </div>
 
         <div style={{ display: "flex", gap: 8, flex: "none" }}>
+          <SupplierLifecycleActions
+            supplierId={supplier.id}
+            supplierName={supplier.shortName}
+            archived={supplier.archivedAt !== null}
+          />
           <ButtonLink
             variant="secondary"
             icon="pencil"

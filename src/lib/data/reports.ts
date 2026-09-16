@@ -257,8 +257,13 @@ export async function getReport(
   const row = data as ReportJoinedRow;
   const children = childrenOf(data);
 
+  // One clock for the whole answer, as in `listReports`. `relativeLabel` reads
+  // it, so letting the mapper default would time "2h ago" from a different
+  // instant than the rest of the response.
+  const now = new Date();
+
   return ok({
-    report: rowToReport(row, children),
+    report: rowToReport(row, children, now),
     sections: rowsToSectionRecords(children.sections),
   });
 }

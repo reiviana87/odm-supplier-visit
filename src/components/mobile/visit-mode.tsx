@@ -7,7 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import { CompletionIndicator } from "@/components/ui/progress";
 import { useToast } from "@/components/ui/toast";
-import type { ReportStatus, SectionId } from "@/types/domain";
+import { saveObservations } from "@/lib/data/report-actions";
+import type { Observation, ReportStatus, SectionId } from "@/types/domain";
 
 import { CameraScreen } from "./camera-screen";
 import { NoteForm } from "./note-form";
@@ -27,15 +28,17 @@ import { VisitHeader } from "./visit-header";
  * they are not routes, and the home grid is the only navigation (README §17:
  * "Bottom navigation — not used; the home grid is the navigation").
  *
- * Phase 1 scope, stated plainly rather than faked:
- *   · camera hardware is not Phase 1 — the viewfinder shows a seeded photo and
+ * What is real, and what is still not, stated plainly rather than faked:
+ *   · observations ARE persisted — Save writes the §6 list through
+ *     `saveObservations` and the counter is the length of what came back;
+ *   · camera hardware is not Phase 2 — the viewfinder shows a seeded photo and
  *     the shutter advances the local flow (see camera-screen.tsx);
- *   · offline sync is not Phase 1 — the weak-signal banner is real UI, the
+ *   · offline sync is not Phase 2 — the weak-signal banner is real UI, the
  *     queue count behind it is seeded, and nothing is stored or replayed;
- *   · file upload and voice / transcript capture are not Phase 1 — their tiles
+ *   · file upload and voice / transcript capture are not Phase 2 — their tiles
  *     say which phase they land in instead of pretending to work;
- *   · what a save does today is move the local counter and report it. There is
- *     no store behind Visit Mode yet.
+ *   · a photo or a note save still only moves the local counter and reports it.
+ *     There is no capture store behind either one yet.
  */
 
 export type VisitScreen = "home" | "camera" | "note" | "observation" | "report";
@@ -50,6 +53,8 @@ export interface VisitSectionRow {
 }
 
 export interface VisitModeProps {
+  /** The open visit every capture is filed against. */
+  reportId: string;
   supplierName: string;
   /** e.g. "Factory Visit · Aug 12 · 10:32". */
   visitLine: string;
@@ -60,7 +65,17 @@ export interface VisitModeProps {
   /** 0–100, derived from the section predicates. */
   completion: number;
   sections: readonly VisitSectionRow[];
-  counters: { photos: number; notes: number; observations: number };
+  /**
+   * Seeded: photo and note capture have no store yet. The third counter is
+   * derived from `observations` instead of being passed, so the number on the
+   * home screen cannot disagree with the list it counts.
+   */
+  counters: { photos: number; notes: number };
+  /**
+   * The report's §6 list as it stands. `saveObservations` replaces the whole
+   * set, so the write needs the rows it must keep, not only the new one.
+   */
+  observations: readonly Observation[];
   lastPhotos: readonly VisitPhoto[];
   /** The frame standing in for the live viewfinder. */
   viewfinder: VisitPhoto;
@@ -69,6 +84,7 @@ export interface VisitModeProps {
 }
 
 export function VisitMode({
+  reportId,
   supplierName,
   visitLine,
   status,
@@ -77,6 +93,7 @@ export function VisitMode({
   completion,
   sections,
   counters,
+  observations,
   lastPhotos,
   viewfinder,
   observationPhoto,
@@ -84,6 +101,57 @@ export function VisitMode({
   const { toast } = useToast();
   const [screen, setScreen] = useState<VisitScreen>("home");
   const [tally, setTally] = useState(counters);
+  const [filed, setFiled] = useState<readonly Observation[]>(observations);
+  const [saving, setSaving] = useState(false);
+
+  /**
+   * File one observation into §6.
+   *
+   * `saveObservations` takes the whole list and replaces it, so the new card
+   * goes on the end of what is already there. The server assigns its id, which
+   * is why the reply is kept rather than the payload: the next save has to send
+   * the same row back with that id, or it would be deleted as surplus.
+   *
+   * A failure keeps the form open with the text still in it. The user is inside
+   * a factory and may have no signal; losing what they just typed because the
+   * write did not land is the one outcome worth designing against.
+   */
+  async function fileObservation(values: { category: string; text: string }) {
+    // A category alone is not an observation, and `saveObservations` would take
+    // the row because the category is never blank. Said in a toast rather than
+    // by disabling Save: the approved button has one painted state.
+    if (values.text.trim() === "") {
+      toast("Write the observation before saving it.", "warning");
+      return;
+    }
+
+    setSaving(true);
+    const result = await saveObservations(reportId, [
+      ...filed,
+      {
+        // The database assigns the real id — `saveObservations` treats an id it
+        // does not already hold as a new card.
+        id: "",
+        category: values.category,
+        // The approved mobile form has no priority control (README §17), so a
+        // card captured in the field starts at the list's lowest priority and
+        // is triaged on the desktop.
+        priority: "Normal",
+        text: values.text,
+        sourceFindingId: null,
+      },
+    ]);
+    setSaving(false);
+
+    if (!result.ok) {
+      toast(result.error.message, "error");
+      return;
+    }
+
+    setFiled(result.data);
+    setScreen("home");
+    toast(`Observation saved to §6 · ${result.data.length} on this report`);
+  }
 
   function handleAction(action: QuickActionId) {
     switch (action) {
@@ -129,7 +197,7 @@ export function VisitMode({
 
       {screen === "home" ? (
         <QuickActionGrid
-          counters={tally}
+          counters={{ ...tally, observations: filed.length }}
           lastPhotos={lastPhotos}
           onAction={handleAction}
         />
@@ -161,16 +229,10 @@ export function VisitMode({
       {screen === "observation" ? (
         <ObservationForm
           photo={observationPhoto}
+          saving={saving}
           onAttach={() => setScreen("camera")}
           onCancel={() => setScreen("home")}
-          onSave={() => {
-            setTally((current) => ({
-              ...current,
-              observations: current.observations + 1,
-            }));
-            setScreen("home");
-            toast("Observation saved to §6 · queued for sync");
-          }}
+          onSave={fileObservation}
         />
       ) : null}
 

@@ -1,8 +1,9 @@
 import Link from "next/link";
-import type { CSSProperties, ReactNode } from "react";
+import type { CSSProperties } from "react";
 
-import { Tag } from "@/components/ui/badge";
-import { REPORTS, type DashboardVisit } from "@/lib/mock-data";
+import { ReportStatusBadge, Tag } from "@/components/ui/badge";
+import { EmptyState } from "@/components/ui/states";
+import type { ReportStatus } from "@/types/domain";
 
 /**
  * Dashboard — "Upcoming / Recent Visits" (README §1.2, prototype lines
@@ -12,10 +13,11 @@ import { REPORTS, type DashboardVisit } from "@/lib/mock-data";
  * over a 20px Barlow Condensed day, border-right, 10px right padding), the
  * supplier over its place line, and the status tag.
  *
- * **[INFERRED]** — the prototype's cards are static; each one is rendered here
- * as a link to that visit's report, resolved from the seeded reports by
- * supplier. A visit with no report keeps the identical card as plain markup
- * rather than a link that goes nowhere.
+ * A visit exists in this app only as the report written about it, so every card
+ * is a link into that report — the page resolves the route and hands it over.
+ * A visit still ahead of today is tagged `Planned`, which is a fact about the
+ * date rather than a report status; every other card carries the report's own
+ * approved status badge.
  */
 
 const CARD: CSSProperties = {
@@ -48,63 +50,65 @@ const SUPPLIER: CSSProperties = {
   fontSize: "13px",
 };
 
-function reportHref(visit: DashboardVisit): string | undefined {
-  const report = REPORTS.find(
-    (candidate) => candidate.supplierShortName === visit.supplier,
-  );
-  return report ? `/reports/${report.id}/purpose` : undefined;
-}
-
-function VisitBody({ visit }: { visit: DashboardVisit }): ReactNode {
-  return (
-    <>
-      <div
-        style={{
-          width: "42px",
-          flex: "none",
-          textAlign: "center",
-          borderRight: "1px solid var(--color-divider)",
-          paddingRight: "10px",
-        }}
-      >
-        <div style={MONTH}>{visit.month}</div>
-        <div style={DAY}>{visit.day}</div>
-      </div>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={SUPPLIER}>{visit.supplier}</div>
-        <div style={{ fontSize: "11.5px", color: "var(--color-neutral-600)" }}>
-          {visit.place}
-        </div>
-      </div>
-      <Tag tone={visit.tagTone}>{visit.tagLabel}</Tag>
-    </>
-  );
+export interface VisitItem {
+  id: string;
+  /** Three-letter month, rendered uppercase. */
+  month: string;
+  day: string;
+  supplier: string;
+  /** "Deqing, Zhejiang · planned" — the report's location and where it stands. */
+  place: string;
+  /** The visit date has not arrived yet. */
+  planned: boolean;
+  status: ReportStatus;
+  href: string;
 }
 
 export interface VisitListProps {
-  visits: readonly DashboardVisit[];
+  visits: readonly VisitItem[];
+  /** The sentence from a failed read (§27), shown instead of the cards. */
+  error?: string;
 }
 
-export function VisitList({ visits }: VisitListProps) {
+export function VisitList({ visits, error }: VisitListProps) {
+  if (visits.length === 0) {
+    return <EmptyState message={error ?? "No visits recorded yet."} />;
+  }
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-      {visits.map((visit) => {
-        const href = reportHref(visit);
-        return href ? (
-          <Link
-            key={visit.id}
-            href={href}
-            className="card hover:bg-[var(--rule-hover)]"
-            style={CARD}
+      {visits.map((visit) => (
+        <Link
+          key={visit.id}
+          href={visit.href}
+          className="card hover:bg-[var(--rule-hover)]"
+          style={CARD}
+        >
+          <div
+            style={{
+              width: "42px",
+              flex: "none",
+              textAlign: "center",
+              borderRight: "1px solid var(--color-divider)",
+              paddingRight: "10px",
+            }}
           >
-            <VisitBody visit={visit} />
-          </Link>
-        ) : (
-          <div key={visit.id} className="card" style={CARD}>
-            <VisitBody visit={visit} />
+            <div style={MONTH}>{visit.month}</div>
+            <div style={DAY}>{visit.day}</div>
           </div>
-        );
-      })}
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={SUPPLIER}>{visit.supplier}</div>
+            <div style={{ fontSize: "11.5px", color: "var(--color-neutral-600)" }}>
+              {visit.place}
+            </div>
+          </div>
+          {visit.planned ? (
+            <Tag tone="warning">Planned</Tag>
+          ) : (
+            <ReportStatusBadge status={visit.status} />
+          )}
+        </Link>
+      ))}
     </div>
   );
 }

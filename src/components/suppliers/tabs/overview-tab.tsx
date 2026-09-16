@@ -2,7 +2,6 @@ import Link from "next/link";
 
 import { Tag } from "@/components/ui/badge";
 import { Blueprint } from "@/components/ui/blueprint";
-import { PHOTO_SEED, REPORTS, photoSrc } from "@/lib/mock-data";
 import type { Supplier } from "@/types/domain";
 
 /**
@@ -53,7 +52,14 @@ function splitDeclared(list: string | null): string[] {
     .filter((entry) => entry.length > 0);
 }
 
-const PHOTO_CAPTIONS = new Map(PHOTO_SEED.map(([id, caption]) => [id, caption]));
+/**
+ * Where a stored visit photograph is served from. Photo storage is Phase 4; the
+ * ids a supplier record carries today resolve to the seeded assets, and this is
+ * the one place that has to change when the bucket exists.
+ */
+function visitPhotoSrc(photoId: string): string {
+  return `/photos/${photoId}.svg`;
+}
 
 /** "Aug 12, 2026" → "Aug 12" (prototype: "All 22 photos from Aug 12 visit"). */
 function visitDayLabel(lastVisitDate: string): string {
@@ -80,13 +86,16 @@ function TagRow({ names, accent }: { names: string[]; accent?: boolean }) {
   );
 }
 
-export function OverviewTab({ supplier }: { supplier: Supplier }) {
+export interface OverviewTabProps {
+  supplier: Supplier;
+  /** The report the photo strip links into, or null when there is none. */
+  latestReportId: string | null;
+}
+
+export function OverviewTab({ supplier, latestReportId }: OverviewTabProps) {
   const facts = companyFacts(supplier);
   const categories = splitDeclared(supplier.productCategories);
   const certifications = splitDeclared(supplier.certifications);
-  const latestReport = REPORTS.find(
-    (report) => report.supplierId === supplier.id,
-  );
 
   return (
     <div
@@ -176,14 +185,16 @@ export function OverviewTab({ supplier }: { supplier: Supplier }) {
                 gap: 6,
               }}
             >
-              {supplier.visitPhotoIds.map((photoId) => (
+              {supplier.visitPhotoIds.map((photoId, index) => (
                 /* eslint-disable-next-line @next/next/no-img-element -- the
                    seed photographs are fixed-height crops of unknown intrinsic
                    size; next/image cannot express that without a ratio. */
                 <img
                   key={photoId}
-                  src={photoSrc(photoId)}
-                  alt={PHOTO_CAPTIONS.get(photoId) ?? "Visit photo"}
+                  src={visitPhotoSrc(photoId)}
+                  /* The photograph's own caption belongs to the report image
+                     (Phase 4); until then the strip names what it shows. */
+                  alt={`${supplier.shortName} visit photo ${index + 1}`}
                   style={{
                     width: "100%",
                     height: 64,
@@ -193,9 +204,9 @@ export function OverviewTab({ supplier }: { supplier: Supplier }) {
                 />
               ))}
             </div>
-            {latestReport && supplier.lastVisitDate ? (
+            {latestReportId && supplier.lastVisitDate ? (
               <Link
-                href={`/reports/${latestReport.id}/appendix`}
+                href={`/reports/${latestReportId}/appendix`}
                 className="hover:underline"
                 style={{
                   display: "inline-block",
@@ -203,9 +214,7 @@ export function OverviewTab({ supplier }: { supplier: Supplier }) {
                   marginTop: 6,
                 }}
               >
-                {`All ${PHOTO_SEED.length} photos from ${visitDayLabel(
-                  supplier.lastVisitDate,
-                )} visit`}
+                {`All photos from ${visitDayLabel(supplier.lastVisitDate)} visit`}
               </Link>
             ) : null}
           </div>

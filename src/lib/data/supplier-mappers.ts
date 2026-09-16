@@ -297,8 +297,6 @@ function supplierColumns(values: SupplierWriteValues): SupplierUpdate {
 
   return {
     legal_name: values.companyName.trim(),
-    chinese_name: toNullable(values.chineseName),
-    supplier_code: toNullable(values.supplierCode),
     established_year: toNullable(values.establishedYear),
     company_capital: toNullable(values.companyCapital),
     employees: toNullable(values.employees),
@@ -336,6 +334,9 @@ export function supplierToInsert(values: SupplierWriteValues, userId: string): S
     legal_name: values.companyName.trim(),
     country: values.country.trim(),
     short_name: shortName,
+    // A new record has nothing to lose, so an absent field is simply empty.
+    chinese_name: toNullable(values.chineseName),
+    supplier_code: toNullable(values.supplierCode),
     // `status` and `data_sheet_state` fall back to the column defaults
     // ('prospect' / 'pending'): a record typed by hand is a prospect whose sheet
     // has not arrived, and nothing in the form claims otherwise.
@@ -352,6 +353,13 @@ export function supplierToInsert(values: SupplierWriteValues, userId: string): S
  * qualification workflow and by the reports, and correcting a typo in the
  * address must not reset a supplier to "prospect". `updated_at` is stamped by
  * the table's own trigger.
+ *
+ * The Chinese name and the supplier code are omitted on the same principle but
+ * for a different reason: the approved form does not draw them, so a caller
+ * editing the data sheet never supplies them, and writing them unconditionally
+ * would clear both columns every time somebody corrected an address. The test
+ * is `undefined` rather than truthiness, so a caller that DOES draw them can
+ * still clear one by passing "".
  */
 export function supplierToUpdate(values: SupplierWriteValues, userId: string): SupplierUpdate {
   const shortName = toNullable(values.shortName);
@@ -359,6 +367,12 @@ export function supplierToUpdate(values: SupplierWriteValues, userId: string): S
   return {
     ...supplierColumns(values),
     ...(shortName ? { short_name: shortName } : {}),
+    ...(values.chineseName !== undefined
+      ? { chinese_name: toNullable(values.chineseName) }
+      : {}),
+    ...(values.supplierCode !== undefined
+      ? { supplier_code: toNullable(values.supplierCode) }
+      : {}),
     ...(values.status ? { status: values.status } : {}),
     ...(values.dataSheetState ? { data_sheet_state: values.dataSheetState } : {}),
     updated_by: userId,

@@ -35,12 +35,27 @@ const SCREEN_WIDTH = 393;
 const SCREEN_HEIGHT = 852;
 
 /**
- * Visit Mode's scoped stylesheet. It carries the two things inline `style`
+ * Visit Mode's scoped stylesheet. It carries the three things inline `style`
  * cannot express and that must not be added to globals.css: the ≥900px
- * composition, and the `:hover` states the prototype declares through
+ * composition, the `:hover` states the prototype declares through
  * `style-hover` on the home tiles (line 2204) and the caption / category chips
- * (line 2259). Every Visit Mode screen renders inside this frame, so the rules
- * are guaranteed to be present wherever those class names are used.
+ * (line 2259), and `.vm-hit`. Every Visit Mode screen renders inside this
+ * frame, so the rules are guaranteed to be present wherever those class names
+ * are used.
+ *
+ * `.vm-hit` is the product owner's confirmed touch-target decision: "Keep the
+ * approved visual appearance of the compact chips … use an invisible /
+ * transparent interaction wrapper or additional hit-area padding without
+ * changing the approved visual appearance." The transparent `::after` grows the
+ * control's hit box by 7px above and below without moving a painted pixel — the
+ * border, ground, font and padding are untouched, and the overlay is part of the
+ * button for hit testing, so the whole 44px lands on the right control.
+ *
+ * 7px is half of the 14px a 30px chip is short of README §24's "Touch targets in
+ * Visit Mode: ≥44px". Its partner is the `rowGap: 14` each wrapping chip row
+ * carries: row pitch then equals the hit box exactly, so the hit areas of two
+ * wrapped rows tile edge to edge and can never overlap, whatever the painted
+ * chip height works out to.
  *
  * The simulated iOS chrome is deliberately NOT the app's typography: it stands
  * in for the operating system, so it uses the platform UI font.
@@ -49,6 +64,8 @@ const FRAME_CSS = `
 .vm-stage{min-height:100vh;min-height:100dvh;background:var(--color-accent-900);font-family:var(--font-body)}
 .vm-tile:hover{background:var(--color-accent-100);border-color:var(--color-accent-300)}
 .vm-chip:hover{border-color:var(--color-accent-400);background:var(--color-accent-100)}
+.vm-hit{position:relative}
+.vm-hit::after{content:"";position:absolute;inset:-7px 0}
 .vm-aside{display:none}
 .vm-device{position:relative;display:flex;flex-direction:column;min-height:100vh;min-height:100dvh;background:var(--color-bg);overflow:hidden}
 .vm-chrome{display:none;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}

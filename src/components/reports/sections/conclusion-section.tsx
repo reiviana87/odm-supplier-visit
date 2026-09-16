@@ -2,12 +2,13 @@
 
 import { useId, useState } from "react";
 
+import { useSectionDraft } from "@/components/reports/section-draft";
 import { Blueprint } from "@/components/ui/blueprint";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/field";
 import { Icon } from "@/components/ui/icon";
 import { useToast } from "@/components/ui/toast";
-import { SECTIONS, type Report } from "@/types/domain";
+import { SECTIONS } from "@/types/domain";
 
 /**
  * §9 Conclusion — prototype lines 1245..1275, README §13.
@@ -86,13 +87,13 @@ function SourceChecklist({ sourcesId }: { sourcesId: string }) {
   );
 }
 
-export function ConclusionSection({ report }: { report: Report }) {
+export function ConclusionSection() {
   const { toast } = useToast();
   const textId = useId();
   const sourcesId = useId();
 
-  const [text, setText] = useState(report.sections.conclusion);
-  const [writing, setWriting] = useState(report.sections.conclusion.length > 0);
+  const { draft, setBody } = useSectionDraft("conclusion");
+  const [writing, setWriting] = useState(draft.body.length > 0);
 
   const placeholder =
     SECTIONS.find((section) => section.id === "conclusion")?.placeholder ??
@@ -108,8 +109,8 @@ export function ConclusionSection({ report }: { report: Report }) {
           <Textarea
             prose
             id={textId}
-            value={text}
-            onChange={(event) => setText(event.target.value)}
+            value={draft.body}
+            onChange={(event) => setBody(event.target.value)}
             minHeight={520}
             placeholder="Overall assessment, capability, risks, opportunities, recommendation, next steps…"
             style={{ padding: 16 }}

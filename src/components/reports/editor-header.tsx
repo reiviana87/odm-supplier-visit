@@ -30,6 +30,7 @@ export function EditorHeader({
   autosave,
   onSaveNow,
   onRetrySave,
+  onReviewConflict,
   onPreview,
   onToggleSources,
   onToggleAssistant,
@@ -41,6 +42,8 @@ export function EditorHeader({
   autosave: AutosaveState;
   onSaveNow?: () => void;
   onRetrySave?: () => void;
+  /** Phase 2 §18 — opens the conflict dialog from the indicator. */
+  onReviewConflict?: () => void;
   onPreview?: () => void;
   onToggleSources?: () => void;
   onToggleAssistant?: () => void;
@@ -96,7 +99,11 @@ export function EditorHeader({
         </div>
 
         <div style={{ marginRight: 4 }}>
-          <AutosaveIndicator state={autosave} onRetry={onRetrySave} />
+          <AutosaveIndicator
+            state={autosave}
+            onRetry={onRetrySave}
+            onReviewConflict={onReviewConflict}
+          />
         </div>
 
         <div className="flex flex-none" style={{ gap: 6 }}>

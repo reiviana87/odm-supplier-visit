@@ -2,6 +2,7 @@
 
 import { useId, useState } from "react";
 
+import { useSectionDraft } from "@/components/reports/section-draft";
 import { Tag } from "@/components/ui/badge";
 import { Button, IconButton } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/field";
@@ -39,11 +40,21 @@ const PRODUCTS_AI_ACTIONS = [
 /** Prototype line 954 — the sentence that states what "optional" means here. */
 const OPTIONAL_NOTE = "Omitted from the report if left empty";
 
+/**
+ * The §4 rows are carried as they were imported: nothing writes
+ * `report_product_rows` yet, so the controls say that rather than naming a
+ * phase they are not in.
+ */
+const TABLE_READ_ONLY =
+  "The §4 construction table cannot be edited yet — the prose above is saved, and the table is carried as it was imported.";
+
 export function ProductsSection({ report }: { report: Report }) {
   const { toast } = useToast();
   const labelId = useId();
 
-  const [text, setText] = useState(report.sections.mainProducts);
+  // The prose is the section body, held and autosaved by the editor shell.
+  const { draft, setBody } = useSectionDraft("products");
+  const text = draft.body;
   const [included, setIncluded] = useState(true);
 
   const rows = report.sections.productRows;
@@ -62,7 +73,7 @@ export function ProductsSection({ report }: { report: Report }) {
         prose
         id={labelId}
         value={text}
-        onChange={(event) => setText(event.target.value)}
+        onChange={(event) => setBody(event.target.value)}
         minHeight={120}
         placeholder="Describe the product families the supplier manufactures…"
       />
@@ -92,7 +103,7 @@ export function ProductsSection({ report }: { report: Report }) {
         <Button
           size="compact"
           icon="plus"
-          onClick={() => toast("Editing the product table arrives in Phase 2")}
+          onClick={() => toast(TABLE_READ_ONLY)}
         >
           Add row
         </Button>
@@ -114,7 +125,7 @@ export function ProductsSection({ report }: { report: Report }) {
             <Button
               size="compact"
               icon="plus"
-              onClick={() => toast("Editing the product table arrives in Phase 2")}
+              onClick={() => toast(TABLE_READ_ONLY)}
             >
               Add row
             </Button>
@@ -163,7 +174,7 @@ export function ProductsSection({ report }: { report: Report }) {
                         size={24}
                         className="text-neutral-500"
                         onClick={() =>
-                          toast("Editing the product table arrives in Phase 2")
+                          toast(TABLE_READ_ONLY)
                         }
                       />
                     </RowActions>

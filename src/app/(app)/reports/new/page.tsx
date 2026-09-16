@@ -1,6 +1,9 @@
 import { NewReportRoute } from "@/components/reports/new-report-modal";
+import { reportsSubtitle } from "@/components/reports/reports-subtitle";
 import { PageHeader, PageShell } from "@/components/ui/page-header";
-import { REPORTS_PAGE_SUBTITLE } from "@/lib/mock-data";
+import { getCurrentUser } from "@/lib/auth/session";
+import { countReports, listReports } from "@/lib/data/reports";
+import { listSuppliers } from "@/lib/data/suppliers";
 
 export const metadata = {
   title: "New Visit Report",
@@ -17,13 +20,29 @@ export const metadata = {
  *
  * The backdrop is the header only, not the reports table: the table lives on
  * /reports, and duplicating it here would put a second, diverging copy of that
- * screen in the codebase for the fraction of a second it is visible.
+ * screen in the codebase for the fraction of a second it is visible. The header
+ * line is read the same way /reports reads it, so the two agree.
  */
-export default function NewReportPage() {
+export default async function NewReportPage() {
+  const [suppliers, counts, reports, profile] = await Promise.all([
+    listSuppliers(),
+    countReports(),
+    listReports(),
+    getCurrentUser(),
+  ]);
+
+  const subtitle = counts.ok ? reportsSubtitle(counts.data) : undefined;
+
   return (
     <PageShell>
-      <PageHeader title="Reports" subtitle={REPORTS_PAGE_SUBTITLE} />
-      <NewReportRoute />
+      <PageHeader title="Reports" subtitle={subtitle} />
+      <NewReportRoute
+        suppliers={suppliers.ok ? suppliers.data : []}
+        currentUserName={profile?.fullName ?? ""}
+        existingDocumentNumbers={
+          reports.ok ? reports.data.map((report) => report.documentNumber) : []
+        }
+      />
     </PageShell>
   );
 }

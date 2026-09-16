@@ -7,6 +7,7 @@ import {
   type Report,
   type ReportPhoto,
   type SectionId,
+  type SupplierCertificate,
 } from "@/types/domain";
 
 import { CertificatesSection } from "./certificates-section";
@@ -77,6 +78,7 @@ function sectionBody(
   sectionId: SectionId,
   report: Report,
   photos: readonly ReportPhoto[],
+  certificates: readonly SupplierCertificate[] | undefined,
 ): ReactNode {
   switch (sectionId) {
     case "general":
@@ -84,7 +86,9 @@ function sectionBody(
     case "purpose":
     case "overview":
     case "partners":
-      return <ProseSection report={report} sectionId={sectionId} />;
+      // The text itself lives on the editor's section draft, so the prose
+      // sections need nothing from the report but their own id.
+      return <ProseSection sectionId={sectionId} />;
     case "company":
       return <CompanySection report={report} />;
     case "products":
@@ -94,9 +98,10 @@ function sectionBody(
     case "visit":
       return <VisitSection report={report} />;
     case "certificates":
-      return <CertificatesSection report={report} />;
+      return <CertificatesSection report={report} certificates={certificates} />;
     case "conclusion":
-      return <ConclusionSection report={report} />;
+      // The conclusion is its section's body, which the editor draft holds.
+      return <ConclusionSection />;
     // README §16 — the three image regions, each with its own export geometry.
     case "product-images":
       return photoSection("MAIN_PRODUCT_IMAGES", report, photos);
@@ -115,13 +120,14 @@ export function renderSection(
   sectionId: SectionId,
   report: Report,
   photos: readonly ReportPhoto[],
+  certificates?: readonly SupplierCertificate[],
 ): ReactNode {
   const definition =
     SECTIONS.find((section) => section.id === sectionId) ?? SECTIONS[0];
 
   return (
     <SectionFrame number={definition.number} title={definition.label}>
-      {sectionBody(sectionId, report, photos)}
+      {sectionBody(sectionId, report, photos, certificates)}
     </SectionFrame>
   );
 }

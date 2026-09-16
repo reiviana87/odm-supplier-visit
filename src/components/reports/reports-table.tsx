@@ -2,9 +2,9 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState, type CSSProperties } from "react";
+import { useState, useTransition, type CSSProperties } from "react";
 
-import { ReportStatusBadge, Tag } from "@/components/ui/badge";
+import { ReportStatusBadge } from "@/components/ui/badge";
 import { Button, IconButton } from "@/components/ui/button";
 import { ConfirmModal } from "@/components/ui/modal";
 import { CompletionIndicator } from "@/components/ui/progress";
@@ -20,6 +20,7 @@ import {
   Tr,
 } from "@/components/ui/table";
 import { useToast } from "@/components/ui/toast";
+import { archiveReport } from "@/lib/data/report-actions";
 import type { ReportStatus } from "@/types/domain";
 
 /**
@@ -29,10 +30,11 @@ import type { ReportStatus } from "@/types/domain";
  * Columns: Document Number · Supplier · Visit Date · Owner · Status ·
  * Completion · Last Updated · Actions.
  *
- * Phase 1 boundary: duplicate, export, archive and paging are reported through
- * a toast naming the phase they land in; delete opens the approved confirm
- * modal (README §1.3) and then says the same, because removing a row from a
- * seeded list would present a deletion that did not happen.
+ * Archive and Delete both archive (Phase 2 §33: a visit report is the record of
+ * what was seen on a date, so it is never hard-deleted) behind the approved
+ * confirmation, which says so. Duplicate, paging and the Word export are not
+ * built; each says which of the three it is instead of naming a phase it will
+ * not arrive in.
  */
 
 export interface ReportRow {
@@ -44,19 +46,25 @@ export interface ReportRow {
   visitDate: string;
   employee: string;
   status: ReportStatus;
-  /** 0–100. See `completionFor()` on the page for where the number comes from. */
+  /** 0–100, derived from the section predicates by the data layer (§6.2). */
   completion: number;
   lastUpdatedLabel: string;
 }
 
 export interface ReportsTableProps {
   rows: readonly ReportRow[];
-  /** The report open in the editor — it carries the `OPEN` tag (screenshot 02). */
-  openReportId?: string;
-  /** Reports in the database, not just on this page — the pager's "of 18". */
+  /** Reports in the database, not just the ones matching — the pager's "of 18". */
   totalCount: number;
   /** True while a search term or a status filter is narrowing `rows`. */
   filtered: boolean;
+}
+
+/** Which button opened the confirmation, so it can say what that button does. */
+type ArchiveIntent = "archive" | "delete";
+
+interface PendingArchive {
+  row: ReportRow;
+  intent: ArchiveIntent;
 }
 
 /** A local override of the accent token, read by the progress fill. */
@@ -78,15 +86,62 @@ function sectionHref(id: string): string {
   return `/reports/${id}/purpose`;
 }
 
-export function ReportsTable({
-  rows,
-  openReportId,
-  totalCount,
-  filtered,
-}: ReportsTableProps) {
+/**
+ * README §22 — state what happens to the record, in the words of the action
+ * that is actually taken. The Delete copy exists to correct the expectation the
+ * button sets: nothing is deleted, and the user finds that out here rather than
+ * after pressing it.
+ */
+function confirmCopy(pending: PendingArchive | null): {
+  title: string;
+  body: string;
+} {
+  if (!pending) return { title: "", body: "" };
+
+  const record = `${pending.row.documentNumber} — ${pending.row.supplierShortName}`;
+  if (pending.intent === "delete") {
+    return {
+      title: "Delete this report?",
+      body:
+        `${record}. A visit report is the record of what was seen and said on a date, so it is ` +
+        "never deleted: it is archived instead. It leaves this list and the dashboard, keeps its " +
+        "photographs and stays readable at its own address.",
+    };
+  }
+
+  return {
+    title: "Archive this report?",
+    body:
+      `${record}. It leaves this list and the dashboard and stays readable at its own address. ` +
+      "Nothing is removed.",
+  };
+}
+
+export function ReportsTable({ rows, totalCount, filtered }: ReportsTableProps) {
   const router = useRouter();
   const { toast } = useToast();
-  const [pendingDelete, setPendingDelete] = useState<ReportRow | null>(null);
+  const [pending, setPending] = useState<PendingArchive | null>(null);
+  const [archiving, startArchive] = useTransition();
+
+  function confirmArchive() {
+    if (!pending) return;
+    const { row } = pending;
+
+    startArchive(async () => {
+      const result = await archiveReport(row.id);
+      if (!result.ok) {
+        // The dialog stays open with the message beside it, so the action can
+        // be tried again or abandoned deliberately.
+        toast(result.error.message, "error");
+        return;
+      }
+      setPending(null);
+      toast(`${row.documentNumber} archived — it stays readable at its own address.`);
+      router.refresh();
+    });
+  }
+
+  const copy = confirmCopy(pending);
 
   return (
     <>
@@ -142,20 +197,6 @@ export function ReportsTable({
                       }}
                     >
                       {row.documentNumber}
-                      {row.id === openReportId ? (
-                        <Tag
-                          tone="outline-accent"
-                          style={{
-                            fontSize: 9.5,
-                            letterSpacing: "0.1em",
-                            textTransform: "uppercase",
-                            padding: "1px 5px",
-                            borderColor: "var(--color-accent-300)",
-                          }}
-                        >
-                          Open
-                        </Tag>
-                      ) : null}
                     </Link>
                   </Td>
 
@@ -212,7 +253,7 @@ export function ReportsTable({
                         label={`Duplicate ${row.documentNumber}`}
                         onClick={() =>
                           toast(
-                            "Duplicate arrives with report persistence (Phase 2)",
+                            "Duplicating a report is not built yet — create a new report and pick the same supplier.",
                           )
                         }
                       />
@@ -226,17 +267,13 @@ export function ReportsTable({
                         variant="secondary"
                         name="archive"
                         label={`Archive ${row.documentNumber}`}
-                        onClick={() =>
-                          toast(
-                            "Archive arrives with report persistence (Phase 2)",
-                          )
-                        }
+                        onClick={() => setPending({ row, intent: "archive" })}
                       />
                       <IconButton
                         variant="secondary"
                         name="trash"
                         label={`Delete ${row.documentNumber}`}
-                        onClick={() => setPendingDelete(row)}
+                        onClick={() => setPending({ row, intent: "delete" })}
                       />
                     </RowActions>
                   </Td>
@@ -247,9 +284,9 @@ export function ReportsTable({
         </Table>
       </TableFrame>
 
-      {/* Pager — prototype lines 345..349. README §19 marks pagination
-          [INFERRED]: the seeded rows fit one page, so Previous is disabled and
-          Next reports that there is nothing further to page to. */}
+      {/* Pager — prototype lines 345..349. There is no paging behind it: the
+          query returns every report that matches, so Previous is disabled and
+          Next says what it would page through if there were pages. */}
       <div
         className="flex items-center"
         style={{
@@ -271,7 +308,9 @@ export function ReportsTable({
           size="compact"
           trailingIcon="right"
           onClick={() =>
-            toast("Paging arrives with the Supabase queries (Phase 2)")
+            toast(
+              "There are no further pages — every report that matches is already on this one.",
+            )
           }
         >
           Next
@@ -279,20 +318,15 @@ export function ReportsTable({
       </div>
 
       <ConfirmModal
-        open={pendingDelete !== null}
-        onClose={() => setPendingDelete(null)}
-        onConfirm={() => {
-          setPendingDelete(null);
-          toast("Delete arrives with report persistence (Phase 2)");
+        open={pending !== null}
+        onClose={() => {
+          if (!archiving) setPending(null);
         }}
-        title="Delete this report?"
-        body={
-          pendingDelete
-            ? `${pendingDelete.documentNumber} — ${pendingDelete.supplierShortName}. The report, its photos and its transcript will be moved to trash. Recoverable for 30 days, after which deletion is permanent.`
-            : ""
-        }
-        confirmLabel="Delete report"
-        destructive
+        onConfirm={confirmArchive}
+        title={copy.title}
+        body={copy.body}
+        confirmLabel="Archive report"
+        loading={archiving}
       />
     </>
   );

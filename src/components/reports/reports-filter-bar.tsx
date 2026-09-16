@@ -1,6 +1,7 @@
 "use client";
 
-import type { CSSProperties } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/field";
@@ -22,12 +23,13 @@ import {
  * 02: the control wraps out of the select row and sits left-aligned inside the
  * same frame).
  *
- * README §25 asks for no advanced filtering logic yet "unless trivial", so
- * Phase 1 wires the two filters that are trivial against the seeded rows — the
- * search box and Status. The other five selects carry the approved label as
- * their single option, exactly as the prototype renders them, and change
- * nothing: offering options that did not filter would be a lie about what the
- * control does. They start filtering when the Supabase queries land.
+ * The two filters that are wired write themselves into the URL rather than into
+ * local state: the page is a Server Component and `listReports` does the
+ * filtering, so the address bar is what decides which rows exist. The other
+ * five selects carry the approved label as their single option, exactly as the
+ * prototype renders them, and change nothing — offering options that did not
+ * filter would be a lie about what the control does. They start filtering when
+ * the list query learns to express them.
  */
 
 /** `all` is the resting option — the select shows its own label, "Status". */
@@ -51,6 +53,12 @@ const INERT_AFTER_STATUS = [
 ] as const;
 
 /**
+ * Long enough that a typed word is one query rather than five, short enough
+ * that the list still feels like it is following the keystrokes.
+ */
+const SEARCH_DEBOUNCE_MS = 300;
+
+/**
  * A filter select that renders but does not filter. The approved bar carries no
  * visible `<label>`, so the control is named for assistive tech (README §24)
  * and the option text is the label the screenshot shows.
@@ -68,19 +76,58 @@ function InertFilter({ label }: { label: string }) {
 }
 
 export interface ReportsFilterBarProps {
+  /** The search term the rows on screen were read with. */
   query: string;
-  onQueryChange: (value: string) => void;
   status: ReportStatusFilter;
-  onStatusChange: (value: ReportStatusFilter) => void;
 }
 
-export function ReportsFilterBar({
-  query,
-  onQueryChange,
-  status,
-  onStatusChange,
-}: ReportsFilterBarProps) {
+/** `/reports?q=…&status=…`, with the resting values left out entirely. */
+function urlFor(pathname: string, query: string, status: ReportStatusFilter): string {
+  const params = new URLSearchParams();
+  const term = query.trim();
+  if (term !== "") params.set("q", term);
+  if (status !== "all") params.set("status", status);
+
+  const search = params.toString();
+  return search === "" ? pathname : `${pathname}?${search}`;
+}
+
+export function ReportsFilterBar({ query, status }: ReportsFilterBarProps) {
+  const router = useRouter();
+  const pathname = usePathname();
   const { toast } = useToast();
+
+  // The input is typed into far faster than the round trip answers, so it holds
+  // its own value and the URL follows it. It is seeded from the server's answer
+  // and not re-synced: the prop only changes because this component pushed it.
+  const [term, setTerm] = useState(query);
+  const debounce = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(
+    () => () => {
+      if (debounce.current !== null) clearTimeout(debounce.current);
+    },
+    [],
+  );
+
+  function search(next: string) {
+    setTerm(next);
+    if (debounce.current !== null) clearTimeout(debounce.current);
+    debounce.current = setTimeout(() => {
+      debounce.current = null;
+      // `replace`, not `push`: a search is a narrowing of the same screen, and
+      // one history entry per keystroke would make Back unusable.
+      router.replace(urlFor(pathname, next, status), { scroll: false });
+    }, SEARCH_DEBOUNCE_MS);
+  }
+
+  function filterByStatus(next: ReportStatusFilter) {
+    if (debounce.current !== null) {
+      clearTimeout(debounce.current);
+      debounce.current = null;
+    }
+    router.replace(urlFor(pathname, term, next), { scroll: false });
+  }
 
   return (
     <FilterBar>
@@ -88,8 +135,8 @@ export function ReportsFilterBar({
         variant="page"
         placeholder="Search reports…"
         aria-label="Search reports"
-        value={query}
-        onChange={(event) => onQueryChange(event.target.value)}
+        value={term}
+        onChange={(event) => search(event.target.value)}
       />
 
       <InertFilter label="Supplier" />
@@ -100,7 +147,7 @@ export function ReportsFilterBar({
         aria-label="Filter by status"
         value={status}
         onChange={(event) =>
-          onStatusChange(event.target.value as ReportStatusFilter)
+          filterByStatus(event.target.value as ReportStatusFilter)
         }
       >
         <option value="all">Status</option>
@@ -126,7 +173,9 @@ export function ReportsFilterBar({
           size="compact"
           icon="filter"
           onClick={() =>
-            toast("Saved views arrive with report persistence (Phase 2)")
+            toast(
+              "Saved views are not built — the search box and Status are in the address bar, so a filtered list can be bookmarked and shared as it is.",
+            )
           }
         >
           Saved views

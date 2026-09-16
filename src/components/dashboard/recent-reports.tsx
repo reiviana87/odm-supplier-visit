@@ -61,15 +61,21 @@ function reportHref(report: ReportSummary) {
 export interface RecentReportsProps {
   /** The dashboard shows the five most recent rows. */
   reports: readonly ReportSummary[];
+  /**
+   * The sentence from a failed read (§27). It stands in for the empty-state
+   * copy, which would otherwise claim there are no reports when the truth is
+   * that none could be read.
+   */
+  error?: string;
 }
 
-export function RecentReports({ reports }: RecentReportsProps) {
+export function RecentReports({ reports, error }: RecentReportsProps) {
   const router = useRouter();
 
   if (reports.length === 0) {
     return (
       <EmptyState
-        message={EMPTY_STATE_COPY.noReports}
+        message={error ?? EMPTY_STATE_COPY.noReports}
         action={
           <ButtonLink
             href="/reports/new"

@@ -2,15 +2,23 @@
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
-import { useId, useRef, type CSSProperties, type ReactNode } from "react";
-import { useFieldArray, useForm, type SubmitHandler } from "react-hook-form";
+import { useEffect, useId, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import {
+  useFieldArray,
+  useForm,
+  type FieldPath,
+  type SubmitHandler,
+  type UseFormSetError,
+} from "react-hook-form";
 
 import { Blueprint } from "@/components/ui/blueprint";
 import { Button, IconButton } from "@/components/ui/button";
 import { Field, FieldGrid, Input, Select, Textarea } from "@/components/ui/field";
 import { Icon } from "@/components/ui/icon";
+import { ErrorState } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
 import { UploadZone } from "@/components/ui/upload-zone";
+import { createSupplier, updateSupplier } from "@/lib/data/supplier-actions";
 import {
   CERTIFICATE_OPTIONS,
   COUNTRY_OPTIONS,
@@ -32,10 +40,12 @@ import type { Supplier, SupplierCertificate } from "@/types/domain";
  * Single column, `max-width:960px`, `padding:22px 24px 0`, seven numbered
  * blocks and a sticky footer bar.
  *
- * Phase 1 has no supplier persistence and no file storage: the Excel import,
- * the logo slot, the certificate copies and the 06 file slots all render the
- * approved control and say which phase brings the behaviour. Nothing here
- * pretends to have saved anything.
+ * Save writes through `createSupplier` / `updateSupplier`, which never redirect:
+ * a refused write leaves the user standing in the form they filled in, with the
+ * reason on the field that caused it or above the footer when it belongs to no
+ * field. The Excel import, the logo slot and the 06 file slots still render the
+ * approved control and say which phase brings the behaviour — nothing here
+ * pretends to have stored a file.
  */
 
 /** Prototype lines 668, 696, … — the numbered block headings. */
@@ -72,9 +82,49 @@ const FILE_SLOTS = [
   "Other",
 ] as const;
 
-const NOT_PERSISTED =
-  "Nothing was saved — supplier records persist from Phase 2 onwards.";
-const FILES_PHASE = "File storage for supplier documents arrives in Phase 2.";
+const FILES_PHASE = "File storage for supplier documents arrives in Phase 4.";
+
+/**
+ * The field paths this form draws a `.field-error` for.
+ *
+ * A server message is only put on a field the user can see. Anything else —
+ * a `supplierCode` conflict, a card the form does not render — would land on a
+ * control nobody is looking at, so it goes above the footer instead.
+ */
+const VISIBLE_FIELD_PATHS = new Set(["companyName", "country", "websiteUrl"]);
+
+function drawsFieldError(path: string): boolean {
+  return VISIBLE_FIELD_PATHS.has(path) || /^contacts\.\d+\.email$/.test(path);
+}
+
+/**
+ * Puts each server message where it belongs and reports whether anything was
+ * left over, so the caller knows it still has to say something out loud.
+ */
+function applyFieldErrors(
+  fieldErrors: Record<string, string> | undefined,
+  setError: UseFormSetError<SupplierFormValues>,
+): { placed: number; unplaced: number } {
+  let placed = 0;
+  let unplaced = 0;
+
+  for (const [path, message] of Object.entries(fieldErrors ?? {})) {
+    if (!drawsFieldError(path)) {
+      unplaced += 1;
+      continue;
+    }
+
+    setError(
+      path as FieldPath<SupplierFormValues>,
+      { type: "server", message },
+      // The first message is also where the cursor goes; the rest stay put.
+      { shouldFocus: placed === 0 },
+    );
+    placed += 1;
+  }
+
+  return { placed, unplaced };
+}
 
 interface BlockProps {
   heading: string;
@@ -109,6 +159,7 @@ export function SupplierForm({ supplier, certificates = [] }: SupplierFormProps)
     register,
     control,
     handleSubmit,
+    setError,
     formState: { errors, isSubmitting },
   } = useForm<SupplierFormValues>({
     resolver: zodResolver(supplierFormSchema),
@@ -136,9 +187,40 @@ export function SupplierForm({ supplier, certificates = [] }: SupplierFormProps)
       ?.click();
   };
 
-  const onSubmit: SubmitHandler<SupplierFormValues> = () => {
-    toast(NOT_PERSISTED, "warning");
-    router.push("/suppliers");
+  /** What went wrong that no single field can explain. */
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const saveErrorRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    // The footer is sticky, the message is not: bring it into view rather than
+    // leaving the user to wonder why Save did nothing.
+    if (saveError) saveErrorRef.current?.scrollIntoView({ block: "nearest" });
+  }, [saveError]);
+
+  const onSubmit: SubmitHandler<SupplierFormValues> = async (values) => {
+    setSaveError(null);
+
+    const result = supplier
+      ? await updateSupplier(supplier.id, values)
+      : await createSupplier(values);
+
+    if (result.ok) {
+      // README §8.2 — "Save → back to the list with a toast."
+      toast(
+        editing
+          ? `${values.companyName} updated.`
+          : `${values.companyName} added to the supplier database.`,
+      );
+      router.push("/suppliers");
+      router.refresh();
+      return;
+    }
+
+    const { placed, unplaced } = applyFieldErrors(result.error.fieldErrors, setError);
+
+    // Demo mode refuses every write, and a refusal with nothing to pin on a
+    // field still has to be visible: the user must see why nothing saved.
+    if (placed === 0 || unplaced > 0) setSaveError(result.error.message);
   };
 
   return (
@@ -542,6 +624,14 @@ export function SupplierForm({ supplier, certificates = [] }: SupplierFormProps)
             {...register("internalNotes")}
           />
         </Block>
+
+        {/* Directly above the sticky footer, so the reason and the button that
+            produced it are read together (README §22). */}
+        <div ref={saveErrorRef}>
+          {saveError ? (
+            <ErrorState className="mb-[18px]" message={saveError} />
+          ) : null}
+        </div>
       </div>
 
       <div

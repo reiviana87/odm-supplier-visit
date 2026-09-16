@@ -1,19 +1,33 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import { cache } from "react";
 
 import { SupplierForm } from "@/components/suppliers/supplier-form";
-import { CERTIFICATES_BY_SUPPLIER, getSupplier } from "@/lib/mock-data";
+import { ErrorState } from "@/components/ui/states";
+import { getSupplier, getSupplierCertificates } from "@/lib/data/suppliers";
 
 interface EditSupplierPageProps {
   params: Promise<{ id: string }>;
 }
 
+/** `generateMetadata` and the page both need the record; this reads it once. */
+const loadSupplier = cache(getSupplier);
+
 export async function generateMetadata({
   params,
 }: EditSupplierPageProps): Promise<Metadata> {
   const { id } = await params;
-  const supplier = getSupplier(id);
-  return { title: supplier ? `Edit ${supplier.shortName}` : "Edit Supplier" };
+  const result = await loadSupplier(id);
+  return { title: result.ok ? `Edit ${result.data.shortName}` : "Edit Supplier" };
+}
+
+/** The form sits in the same column the form itself uses. */
+function FormError({ message }: { message: string }) {
+  return (
+    <div style={{ padding: "22px 24px 0", maxWidth: 960 }}>
+      <ErrorState variant="page" message={message} />
+    </div>
+  );
 }
 
 /**
@@ -25,16 +39,22 @@ export async function generateMetadata({
  */
 export default async function EditSupplierPage({ params }: EditSupplierPageProps) {
   const { id } = await params;
-  const supplier = getSupplier(id);
+  const supplier = await loadSupplier(id);
 
-  if (!supplier) {
-    notFound();
+  if (!supplier.ok) {
+    if (supplier.error.code === "not_found") notFound();
+    return <FormError message={supplier.error.message} />;
   }
 
-  return (
-    <SupplierForm
-      supplier={supplier}
-      certificates={CERTIFICATES_BY_SUPPLIER[supplier.id] ?? []}
-    />
-  );
+  const certificates = await getSupplierCertificates(id);
+
+  // The form is the whole record: saving it writes block 05 back and deletes
+  // the rows it no longer carries. So a certificate read that failed must stop
+  // the screen — opening the form on an empty block 05 would quietly throw the
+  // collected copies away on the next save.
+  if (!certificates.ok) {
+    return <FormError message={certificates.error.message} />;
+  }
+
+  return <SupplierForm supplier={supplier.data} certificates={certificates.data} />;
 }

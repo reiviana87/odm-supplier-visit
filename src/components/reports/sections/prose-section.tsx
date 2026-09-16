@@ -1,12 +1,13 @@
 "use client";
 
-import { useId, useMemo, useState } from "react";
+import { useId, useMemo } from "react";
 
+import { useSectionDraft } from "@/components/reports/section-draft";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/field";
 import { Icon } from "@/components/ui/icon";
 import { useToast } from "@/components/ui/toast";
-import { SECTIONS, type Report, type SectionId } from "@/types/domain";
+import { SECTIONS, type SectionId } from "@/types/domain";
 
 /* ═══════════════════════════════════════════════════════════════════════════
    AI actions row — README §6.1 / §11, prototype line 861.
@@ -81,7 +82,9 @@ const TOOLBAR_BUTTON = {
 function FormattingToolbar({ label }: { label: string }) {
   const { toast } = useToast();
   const notImplemented = () =>
-    toast("Bold, italic and lists arrive with the rich-text editor in Phase 2");
+    toast(
+      "Bold, italic and lists are not built — sections are stored as plain text, and what is typed here is saved.",
+    );
 
   return (
     <div
@@ -205,13 +208,6 @@ const PROSE_SETTINGS: Record<
   },
 };
 
-function sectionText(report: Report, sectionId: ProseSectionId): string {
-  const sections = report.sections;
-  if (sectionId === "purpose") return sections.purpose;
-  if (sectionId === "overview") return sections.overview;
-  return sections.partners;
-}
-
 function countWords(text: string): number {
   const trimmed = text.trim();
   return trimmed.length === 0 ? 0 : trimmed.split(/\s+/).length;
@@ -239,20 +235,18 @@ function plural(count: number, noun: string): string {
  * printed a fixed "2 paragraphs · 118 words"; the seeded §1 is 2 paragraphs and
  * 87 words, and this renders what is actually there.
  */
-export function ProseSection({
-  report,
-  sectionId,
-}: {
-  report: Report;
-  sectionId: ProseSectionId;
-}) {
+export function ProseSection({ sectionId }: { sectionId: ProseSectionId }) {
   const { toast } = useToast();
   const labelId = useId();
   const definition =
     SECTIONS.find((section) => section.id === sectionId) ?? SECTIONS[1];
   const settings = PROSE_SETTINGS[sectionId];
 
-  const [text, setText] = useState(() => sectionText(report, sectionId));
+  // The editor shell owns the text: it is what autosaves it against the row's
+  // version, so binding the textarea to local state here would leave the save
+  // path with nothing to send (Phase 2 section 18).
+  const { draft, setBody } = useSectionDraft(sectionId);
+  const text = draft.body;
   const counts = useMemo(
     () => ({ words: countWords(text), paragraphs: countParagraphs(text) }),
     [text],
@@ -273,7 +267,7 @@ export function ProseSection({
         prose
         id={labelId}
         value={text}
-        onChange={(event) => setText(event.target.value)}
+        onChange={(event) => setBody(event.target.value)}
         placeholder={settings.placeholder}
         minHeight={settings.minHeight}
         style={{ borderTopWidth: 0 }}

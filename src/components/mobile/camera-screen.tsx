@@ -132,8 +132,17 @@ export function CameraScreen({
             aria-label="Destination section"
             value={section}
             onChange={(event) => setSection(event.target.value as ImageRegion)}
+            // The confirmed touch-target decision, the one control it cannot be
+            // met on invisibly: a native <select> renders no ::after, and a
+            // transparent wrapper cannot open its popup. So this is the "unless
+            // required" case and the box itself grows 36px → 44px. What it gives
+            // up is not an approved Visit Mode measurement — the prototype sets
+            // no height here and the 36px came from `.input`, the shared desktop
+            // form-control height, against README §24's "Touch targets in Visit
+            // Mode: ≥44px".
             style={{
               fontSize: 12.5,
+              minHeight: 44,
               background: "color-mix(in srgb, var(--color-bg) 92%, transparent)",
               borderColor: "transparent",
             }}

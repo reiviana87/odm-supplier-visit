@@ -1,15 +1,18 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useRef, useState, useTransition } from "react";
 
+import { useSectionDraft } from "@/components/reports/section-draft";
 import { Blueprint } from "@/components/ui/blueprint";
 import { Tag, type TagTone } from "@/components/ui/badge";
 import { Button, IconButton } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import { EmptyState, EMPTY_STATE_COPY } from "@/components/ui/states";
 import { Tabs } from "@/components/ui/tabs";
-import { Textarea } from "@/components/ui/field";
+import { Input, Select, Textarea } from "@/components/ui/field";
 import { useToast } from "@/components/ui/toast";
+import { saveObservations } from "@/lib/data/report-actions";
+import { joinQaBullets, splitQaBullets } from "@/lib/data/report-mappers";
 import { transcriptFindingCounts } from "@/lib/mock-data";
 import type { Observation, Report } from "@/types/domain";
 
@@ -17,9 +20,13 @@ import type { Observation, Report } from "@/types/domain";
  * §6 Visit Relevant Information — prototype lines 1070..1138 and the approved
  * capture `screenshots/05-editor-visit-relevant-information.png`.
  *
- * Observations are the section's content; the Q&A block is **optional**
- * (README §25) and carries its own `Optional` tag and exclude control. The
- * banner counts come from the transcript findings, never from a constant:
+ * Observations are the section's content and are stored as their own rows:
+ * `saveObservations` replaces the set, numbering them by the order on screen.
+ * The Q&A block is **optional** (README §25) and is the `visit` section body —
+ * one bullet per line — so it rides the editor's autosave, and its `Optional`
+ * tag and exclude control write the row's `excluded` flag.
+ *
+ * The banner counts come from the transcript findings, never from a constant:
  * README §12 — "9 AI findings … · 4 already added".
  */
 
@@ -38,60 +45,171 @@ const PRIORITY_TONE: Record<Observation["priority"], TagTone> = {
   Critical: "danger",
 };
 
+const PRIORITIES: ReadonlyArray<Observation["priority"]> = [
+  "Normal",
+  "High",
+  "Critical",
+];
+
 const TRANSCRIPT_PHASE = "Transcript analysis arrives in Phase 6";
 
+/**
+ * A card the author opened and never typed into is not an observation — the
+ * rule `saveObservations` applies before it writes anything, restated here so
+ * the screen can tell which of its cards the database is answering about.
+ */
+function isBlank(observation: Observation): boolean {
+  return observation.category.trim() === "" && observation.text.trim() === "";
+}
+
+/** The stored rows, back under the cards they belong to — see §5 for the why. */
+function adoptStored(
+  local: readonly Observation[],
+  stored: readonly Observation[],
+): Observation[] {
+  let next = 0;
+  return local.map((observation) =>
+    isBlank(observation) ? observation : (stored[next++] ?? observation),
+  );
+}
+
+/**
+ * README §4 "Observation card" lists `editing` among its states: the resting
+ * card is the approved read-only one, and the pencil opens the same card with
+ * its three values in controls. Nothing moves; the tags become the fields they
+ * were printing.
+ */
 function ObservationCard({
   observation,
+  index,
+  editing,
+  onToggleEdit,
+  onChange,
+  onCommit,
+  onDelete,
   onUnavailable,
 }: {
   observation: Observation;
+  index: number;
+  editing: boolean;
+  onToggleEdit: () => void;
+  onChange: (patch: Partial<Observation>) => void;
+  onCommit: () => void;
+  onDelete: () => void;
   onUnavailable: (message: string) => void;
 }) {
+  const position = `observation ${index + 1}`;
+
   return (
     <Blueprint style={{ padding: "11px 12px" }}>
       <div className="flex items-center" style={{ gap: 7, marginBottom: 6 }}>
-        <Tag tone="outline" style={{ fontSize: 10 }}>
-          {observation.category}
-        </Tag>
-        <Tag tone={PRIORITY_TONE[observation.priority]}>{observation.priority}</Tag>
+        {editing ? (
+          <>
+            <Input
+              compact
+              value={observation.category}
+              aria-label={`Category of ${position}`}
+              placeholder="Category"
+              onChange={(event) => onChange({ category: event.target.value })}
+              onBlur={onCommit}
+              style={{ width: 190, fontSize: 11.5 }}
+            />
+            <Select
+              compact
+              value={observation.priority}
+              aria-label={`Priority of ${position}`}
+              onChange={(event) => {
+                onChange({
+                  priority: event.target.value as Observation["priority"],
+                });
+                onCommit();
+              }}
+              style={{ width: 104, fontSize: 11.5 }}
+            >
+              {PRIORITIES.map((priority) => (
+                <option key={priority} value={priority}>
+                  {priority}
+                </option>
+              ))}
+            </Select>
+          </>
+        ) : (
+          <>
+            {observation.category.trim() === "" ? null : (
+              <Tag tone="outline" style={{ fontSize: 10 }}>
+                {observation.category}
+              </Tag>
+            )}
+            <Tag tone={PRIORITY_TONE[observation.priority]}>
+              {observation.priority}
+            </Tag>
+          </>
+        )}
         <div style={{ flex: 1 }} />
         <IconButton
-          label="Attach photo"
+          label={`Attach photo to ${position}`}
           name="image"
           size={23}
           className="text-neutral-500"
           onClick={() => onUnavailable("Attaching a photo arrives in Phase 4")}
         />
         <IconButton
-          label="Edit observation"
-          name="pencil"
+          label={editing ? `Finish editing ${position}` : `Edit ${position}`}
+          name={editing ? "check" : "pencil"}
           size={23}
           className="text-neutral-500"
-          onClick={() => onUnavailable("Editing observations arrives in Phase 2")}
+          onClick={onToggleEdit}
         />
         <IconButton
-          label="Delete observation"
+          label={`Delete ${position}`}
           name="trash"
           size={23}
           className="text-neutral-500"
-          onClick={() => onUnavailable("Deleting observations arrives in Phase 2")}
+          onClick={onDelete}
         />
       </div>
-      <div style={{ fontSize: 13, lineHeight: 1.6 }}>{observation.text}</div>
+
+      {editing ? (
+        <Textarea
+          value={observation.text}
+          aria-label={`Text of ${position}`}
+          placeholder="What was seen, said or measured…"
+          onChange={(event) => onChange({ text: event.target.value })}
+          onBlur={onCommit}
+          minHeight={64}
+          style={{ fontSize: 13, lineHeight: 1.6, background: "var(--color-bg)" }}
+        />
+      ) : (
+        <div style={{ fontSize: 13, lineHeight: 1.6 }}>{observation.text}</div>
+      )}
     </Blueprint>
   );
 }
 
-function QaBlock({ report }: { report: Report }) {
+function QaBlock() {
   const { toast } = useToast();
-  const [included, setIncluded] = useState(report.sections.qaIncluded);
+  // README §6.2 — §6's Q&A block is the `visit` section body, one bullet per
+  // line, and the exclude control is that row's `excluded` flag.
+  const { draft, setBody, setExcluded } = useSectionDraft("visit");
+
   const [bullets, setBullets] = useState(() =>
-    report.sections.qaBullets.map((text, index) => ({
+    splitQaBullets(draft.body).map((text, index) => ({
       id: `qa-${index}`,
       text,
     })),
   );
-  const [nextId, setNextId] = useState(report.sections.qaBullets.length);
+  const [nextId, setNextId] = useState(() => splitQaBullets(draft.body).length);
+
+  const included = !draft.excluded;
+
+  /** Local ids keep the inputs stable; the body is what is stored. */
+  const commit = useCallback(
+    (next: ReadonlyArray<{ id: string; text: string }>) => {
+      setBullets([...next]);
+      setBody(joinQaBullets(next.map((bullet) => bullet.text)));
+    },
+    [setBody],
+  );
 
   return (
     <>
@@ -110,7 +228,7 @@ function QaBlock({ report }: { report: Report }) {
           size="compact"
           aria-pressed={!included}
           style={{ fontSize: 11.5, color: "var(--color-neutral-700)" }}
-          onClick={() => setIncluded((current) => !current)}
+          onClick={() => setExcluded(included)}
         >
           {included ? "Exclude from report" : "Include in report"}
         </Button>
@@ -139,8 +257,8 @@ function QaBlock({ report }: { report: Report }) {
                   aria-label={`Q&A key point ${index + 1}`}
                   value={bullet.text}
                   onChange={(event) =>
-                    setBullets((current) =>
-                      current.map((item) =>
+                    commit(
+                      bullets.map((item) =>
                         item.id === bullet.id
                           ? { ...item, text: event.target.value }
                           : item,
@@ -163,9 +281,7 @@ function QaBlock({ report }: { report: Report }) {
                   className="text-neutral-500"
                   style={{ width: 24, height: 24, minHeight: 24, marginTop: 3 }}
                   onClick={() =>
-                    setBullets((current) =>
-                      current.filter((item) => item.id !== bullet.id),
-                    )
+                    commit(bullets.filter((item) => item.id !== bullet.id))
                   }
                 />
               </div>
@@ -180,6 +296,8 @@ function QaBlock({ report }: { report: Report }) {
               size="compact"
               icon="plus"
               onClick={() => {
+                // A blank line is not a bullet, so an empty new one changes the
+                // stored body only once it is written in.
                 setBullets((current) => [
                   ...current,
                   { id: `qa-new-${nextId}`, text: "" },
@@ -210,7 +328,7 @@ function QaBlock({ report }: { report: Report }) {
         <EmptyState
           message="Q&A excluded from this report — §6 will contain observations only."
           action={
-            <Button size="compact" onClick={() => setIncluded(true)}>
+            <Button size="compact" onClick={() => setExcluded(false)}>
               Include again
             </Button>
           }
@@ -224,7 +342,72 @@ export function VisitSection({ report }: { report: Report }) {
   const { toast } = useToast();
   const [view, setView] = useState<VisitView>("observations");
 
-  const observations = report.sections.observations;
+  const [observations, setObservations] = useState<readonly Observation[]>(
+    () => report.sections.observations,
+  );
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [, startSave] = useTransition();
+
+  /** See §5: the stored rows are only taken back in when nothing has moved on. */
+  const revision = useRef(0);
+  const drafted = useRef(0);
+
+  const edit = useCallback((next: readonly Observation[]) => {
+    revision.current += 1;
+    setObservations(next);
+  }, []);
+
+  const persist = useCallback(
+    (next: readonly Observation[]) => {
+      const at = revision.current;
+
+      startSave(async () => {
+        const result = await saveObservations(report.id, next);
+        if (!result.ok) {
+          toast(result.error.message, "error");
+          return;
+        }
+        if (revision.current === at) {
+          setObservations((current) => adoptStored(current, result.data));
+        }
+      });
+    },
+    [report.id, toast],
+  );
+
+  const patchObservation = useCallback(
+    (id: string, patch: Partial<Observation>) => {
+      edit(
+        observations.map((observation) =>
+          observation.id === id ? { ...observation, ...patch } : observation,
+        ),
+      );
+    },
+    [edit, observations],
+  );
+
+  const deleteObservation = useCallback(
+    (id: string) => {
+      const next = observations.filter((observation) => observation.id !== id);
+      if (editingId === id) setEditingId(null);
+      edit(next);
+      persist(next);
+    },
+    [edit, editingId, observations, persist],
+  );
+
+  /** A new card is added to the screen and stored once something is in it. */
+  const addObservation = useCallback(() => {
+    drafted.current += 1;
+    const id = `draft-${drafted.current}`;
+    edit([
+      ...observations,
+      { id, category: "", priority: "Normal", text: "", sourceFindingId: null },
+    ]);
+    setEditingId(id);
+    setView("observations");
+  }, [edit, observations]);
+
   const counts = transcriptFindingCounts();
   /**
    * The seeded findings belong to the report whose observations came from
@@ -251,7 +434,9 @@ export function VisitSection({ report }: { report: Report }) {
             if (!next) return;
             setView(next.id);
             if (next.id === "rich") {
-              toast("The §6 rich-text view arrives with the rich-text editor in Phase 2");
+              toast(
+                "The §6 rich-text view is not built — observations and Q&A are the surfaces that exist, and both are saved.",
+              );
             }
           }}
         />
@@ -267,17 +452,13 @@ export function VisitSection({ report }: { report: Report }) {
         >
           Analyze Transcript
         </Button>
-        <Button
-          size="compact"
-          icon="plus"
-          onClick={() => toast("Adding an observation arrives in Phase 2")}
-        >
+        <Button size="compact" icon="plus" onClick={addObservation}>
           Add Observation
         </Button>
       </div>
 
       {view === "rich" ? (
-        <EmptyState message="The rich-text view of §6 arrives with the rich-text editor in Phase 2 — observations and Q&A are the approved Phase 1 surfaces." />
+        <EmptyState message="The rich-text view of §6 arrives with the rich-text editor — observations and Q&A are the two surfaces that exist today, and both are saved." />
       ) : null}
 
       {view === "observations" ? (
@@ -334,10 +515,24 @@ export function VisitSection({ report }: { report: Report }) {
               className="flex flex-col"
               style={{ gap: 9, marginBottom: 24 }}
             >
-              {observations.map((observation) => (
+              {observations.map((observation, index) => (
                 <ObservationCard
                   key={observation.id}
                   observation={observation}
+                  index={index}
+                  editing={editingId === observation.id}
+                  onToggleEdit={() => {
+                    if (editingId !== observation.id) {
+                      setEditingId(observation.id);
+                      return;
+                    }
+                    // Closing the card is the author saying it is finished.
+                    setEditingId(null);
+                    persist(observations);
+                  }}
+                  onChange={(patch) => patchObservation(observation.id, patch)}
+                  onCommit={() => persist(observations)}
+                  onDelete={() => deleteObservation(observation.id)}
                   onUnavailable={toast}
                 />
               ))}
@@ -346,7 +541,7 @@ export function VisitSection({ report }: { report: Report }) {
         </>
       ) : null}
 
-      {view === "observations" || view === "qa" ? <QaBlock report={report} /> : null}
+      {view === "observations" || view === "qa" ? <QaBlock /> : null}
     </div>
   );
 }

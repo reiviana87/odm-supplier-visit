@@ -267,6 +267,14 @@ export function supplierToFormValues(
     tel: supplier.tel ?? "",
     websiteUrl: supplier.websiteUrl ?? "",
     trackRecordEbara: supplier.trackRecordEbara ?? "",
+    // The commercial block. Omitting these here is not cosmetic: the update
+    // writes every column it builds, so a field the form never loaded would be
+    // saved back as null and the record would lose it on an unrelated edit.
+    annualRevenue: supplier.annualRevenue ?? "",
+    ownershipType: supplier.ownershipType ?? "",
+    mainMarkets: supplier.mainMarkets ?? "",
+    mainProducts: supplier.mainProducts ?? "",
+    productionCapabilities: supplier.productionCapabilities ?? "",
     contacts:
       supplier.contacts.length > 0
         ? supplier.contacts.map((contact) => ({

@@ -633,7 +633,7 @@ export const SUPPLIERS: readonly Supplier[] = [
     presidentName: "Xueliang Yan",
     websiteUrl: "www.wlyddj.cn",
     country: "China",
-    region: "Zhejiang Province",
+    region: "Zhejiang",
     city: "Taizhou Wenling",
     address: "Nanquan Industrial Zone, Wenling, Zhejiang, China",
     tel: "+86-57686177707",
@@ -780,17 +780,3 @@ export const SUPPLIERS: readonly Supplier[] = [
 export function getSupplier(id: string): Supplier | undefined {
   return SUPPLIERS.find((supplier) => supplier.id === id);
 }
-
-/**
- * The two letters shown in the `.blueprint` square on the suppliers list (30px)
- * and the supplier detail header (62px): the first two ASCII letters of the short
- * name, uppercased. "HEBEI HUATONG" → "HE", "TESK" → "TE", "Nanfang / CNP" → "NA".
- */
-export function supplierInitials(supplier: Supplier): string {
-  return supplier.shortName.replace(/[^A-Za-z]/g, "").slice(0, 2).toUpperCase();
-}
-
-/** Suppliers page subtitle — "14 records · 12 data sheets received". */
-export const SUPPLIER_COUNT_LABEL = `${SUPPLIERS.length} records · ${
-  SUPPLIERS.filter((supplier) => supplier.dataSheetState === "received").length
-} data sheets received`;

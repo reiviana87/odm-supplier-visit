@@ -30,6 +30,7 @@ export function SectionNavigator({
   completionPercent,
   warnings = {},
   aiAvailable = {},
+  submitting = false,
   onSubmitForReview,
 }: {
   reportId: string;
@@ -40,6 +41,8 @@ export function SectionNavigator({
   warnings?: Partial<Record<SectionId, string>>;
   /** Sections with an unreviewed AI suggestion — an 11px spark, right-aligned. */
   aiAvailable?: Partial<Record<SectionId, boolean>>;
+  /** True while the status write is in flight — the button holds still. */
+  submitting?: boolean;
   onSubmitForReview?: () => void;
 }) {
   return (
@@ -131,6 +134,7 @@ export function SectionNavigator({
 
       <Button
         variant="secondary"
+        loading={submitting}
         onClick={onSubmitForReview}
         style={{ fontSize: 12, margin: "0 8px", width: "calc(100% - 16px)" }}
       >

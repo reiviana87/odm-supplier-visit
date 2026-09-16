@@ -13,7 +13,8 @@ import { Textarea } from "@/components/ui/field";
  *   sub       11.5px neutral-600 "{section} · caption optional"
  *   retake    ghost button, 12px, padding 3px 8px
  *   caption   textarea min-height 60 · 13px / 1.45 · padding 8px 10px
- *   starters  five chips, 11.5px, padding 4px 9px, min-height 30
+ *   starters  five chips, 11.5px, padding 4px 9px, min-height 30 — painted as
+ *             approved, with a transparent 44px hit box (`.vm-hit`)
  *   actions   two 44px buttons — "AI caption later" then the save button,
  *             which reads "Save without caption" while the field is empty
  *
@@ -118,12 +119,26 @@ export function CaptionSheet({
         }}
       />
 
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 11 }}>
+      {/* rowGap 14, not the approved 6, is the other half of `.vm-hit`: it puts
+          the wrapped rows exactly one hit box apart so the 44px targets tile
+          instead of overlapping. The column gap stays at the approved 6. */}
+      <div
+        style={{
+          display: "flex",
+          flexWrap: "wrap",
+          columnGap: 6,
+          rowGap: 14,
+          marginBottom: 11,
+        }}
+      >
         {STARTERS.map((starter) => (
           <button
             key={starter}
             type="button"
-            className="vm-chip"
+            // `vm-hit` — the confirmed touch-target decision: the chip keeps its
+            // approved 30px appearance and gains a transparent ±7px hit box
+            // (44px effective) instead of being enlarged. See phone-frame.tsx.
+            className="vm-chip vm-hit"
             onClick={() => onChange(`${starter} — `)}
             style={{
               border: "1px solid var(--color-divider)",

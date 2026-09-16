@@ -1,12 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { useState, useTransition } from "react";
 
 import { Blueprint } from "@/components/ui/blueprint";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import { ConfirmModal } from "@/components/ui/modal";
 import { useToast } from "@/components/ui/toast";
+import { refreshSupplierSnapshot } from "@/lib/data/report-actions";
 import type { Report, SupplierSnapshot } from "@/types/domain";
 
 /**
@@ -100,7 +102,29 @@ function factsOf(snapshot: SupplierSnapshot): ReadonlyArray<[string, string]> {
 
 export function CompanySection({ report }: { report: Report }) {
   const { toast } = useToast();
+  const router = useRouter();
   const [confirming, setConfirming] = useState(false);
+  const [refreshing, startRefresh] = useTransition();
+
+  /**
+   * README §8.3 — the one thing allowed to change what a finished report says
+   * about the supplier, and only because the user asked for it here. It is
+   * never called from an effect, and never as a side effect of anything else.
+   */
+  function refreshSnapshot() {
+    startRefresh(async () => {
+      const result = await refreshSupplierSnapshot(report.id);
+      if (!result.ok) {
+        toast(result.error.message, "error");
+        return;
+      }
+      setConfirming(false);
+      toast(
+        `§2 now shows the supplier record as of ${formatSnapshotDate(result.data.takenAt)}.`,
+      );
+      router.refresh();
+    });
+  }
 
   const snapshot = report.supplierSnapshot;
   const facts = factsOf(snapshot);
@@ -167,11 +191,12 @@ export function CompanySection({ report }: { report: Report }) {
 
       <ConfirmModal
         open={confirming}
-        onClose={() => setConfirming(false)}
-        onConfirm={() => {
-          setConfirming(false);
-          toast("Snapshot refresh and its field-by-field diff arrive in Phase 2");
+        onClose={() => {
+          if (!refreshing) setConfirming(false);
         }}
+        onConfirm={refreshSnapshot}
+        loading={refreshing}
+        confirmLabel="Refresh snapshot"
         title="Refresh from the supplier record"
         body={
           <>
@@ -180,11 +205,12 @@ export function CompanySection({ report }: { report: Report }) {
             report stops being a record of what was true at the visit date.
             <br />
             <br />
-            The field-by-field diff you confirm before anything is overwritten
-            arrives with supplier persistence in Phase 2 — nothing is changed yet.
+            Every field in the list above is replaced at once. There is no
+            field-by-field diff to review first, and the copy being replaced is
+            not kept anywhere — note down anything that has to survive before
+            confirming.
           </>
         }
-        confirmLabel="Refresh snapshot"
       />
     </div>
   );

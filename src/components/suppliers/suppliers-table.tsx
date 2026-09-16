@@ -2,7 +2,15 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useState, type CSSProperties } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useTransition,
+  type CSSProperties,
+} from "react";
 
 import { Button, ButtonLink, IconButton } from "@/components/ui/button";
 import { DataSheetBadge, SupplierStatusBadge } from "@/components/ui/badge";
@@ -19,25 +27,31 @@ import {
   Tr,
 } from "@/components/ui/table";
 import { useToast } from "@/components/ui/toast";
-import { supplierInitials } from "@/lib/mock-data";
 import { SUPPLIER_STATUS_LABELS, type Supplier } from "@/types/domain";
 
+import { supplierInitials } from "@/lib/suppliers/display";
 import {
-  EMPTY_SUPPLIER_FILTERS,
-  isFilterActive,
-  supplierMatchesFilters,
-  SuppliersFilterBar,
+  EMPTY_LOCAL_FILTERS,
+  EMPTY_QUERY_FILTERS,
+  hasLocalFilter,
+  hasQueryFilter,
+  matchesLocalFilters,
+  suppliersHref,
   type SupplierFilters,
-} from "./suppliers-filter-bar";
+  type SupplierLocalFilters,
+  type SupplierQueryFilters,
+} from "./supplier-list-filters";
+import { SuppliersFilterBar } from "./suppliers-filter-bar";
 
 /**
  * Suppliers list — README §1.6, §8.2, §19; prototype lines 366..419.
  *
  * The whole client surface of the screen: the filter bar, the sortable table
  * inside its 1180px-wide scrolling `.blueprint` frame, and the empty state.
- * Filtering and sorting are in-memory over the 14 seeded records (README §8.1),
- * which is what Phase 1 needs — the same predicates move into the Supabase
- * query later without changing this component's shape.
+ * The rows arrive filtered and ordered from `listSuppliers()`; this component
+ * owns the sort the user clicks, the two refinements the query cannot express
+ * (Region, Certification) and the search box's own text while the debounce
+ * runs. Everything else it changes it writes to the URL.
  */
 
 /* ─────────────────────────────────────────────────────────────────────────
@@ -76,11 +90,12 @@ const SUPPLIER_COLUMNS: readonly SupplierColumn[] = [
 ];
 
 /**
- * Prototype line 359. Reading the Excel data sheet is not a Phase 1 feature, so
- * the control states where the import lands instead of faking a result.
+ * Prototype line 359. Reading the Excel data sheet is not part of this phase,
+ * so the control states where the import lands instead of faking a result. The
+ * phase named here is the one the supplier form's own drop zone names.
  */
 const IMPORT_TOAST =
-  "Excel data-sheet import arrives in Phase 2 — the .xlsx columns will prefill the supplier fields";
+  "Excel data-sheet import arrives in Phase 3 — the .xlsx columns will prefill the supplier fields";
 
 /** The prototype writes an em dash wherever the data sheet had no value. */
 const EM_DASH = "—";
@@ -396,7 +411,7 @@ function SupplierRow({ supplier }: { supplier: Supplier }) {
 /**
  * The page header's action pair. It lives beside the table rather than in the
  * page because `Import Data Sheet` needs a click handler: reading the Excel
- * data sheet is not part of Phase 1, so the control names the phase it lands
+ * data sheet is not part of this phase, so the control names the phase it lands
  * in instead of faking a result (prototype line 359).
  */
 export function SuppliersHeaderActions() {
@@ -418,21 +433,77 @@ export function SuppliersHeaderActions() {
    The list
    ───────────────────────────────────────────────────────────────────────── */
 
+/**
+ * Long enough that a query is sent once a word is typed rather than once a
+ * letter is, short enough that the list still feels like it filters as you
+ * type (README §1.6).
+ */
+const SEARCH_DEBOUNCE_MS = 300;
+
 export interface SuppliersTableProps {
+  /** Already filtered by `filters` and ordered short name A–Z by the query. */
   suppliers: readonly Supplier[];
+  /** The four filters the address bar carries. */
+  filters: SupplierQueryFilters;
 }
 
-export function SuppliersTable({ suppliers }: SuppliersTableProps) {
+export function SuppliersTable({ suppliers, filters }: SuppliersTableProps) {
   const { toast } = useToast();
-  const [filters, setFilters] = useState<SupplierFilters>(EMPTY_SUPPLIER_FILTERS);
+  const router = useRouter();
+  const [, startTransition] = useTransition();
+
+  const [local, setLocal] = useState<SupplierLocalFilters>(EMPTY_LOCAL_FILTERS);
   const [sort, setSort] = useState<SortState>(DEFAULT_SORT);
+
+  // The search box keeps its own text so typing stays instant while the URL
+  // catches up one query behind it.
+  const [draftQuery, setDraftQuery] = useState(filters.query);
+  /** The query written into the URL by this component and not yet observed. */
+  const pushedQuery = useRef<string | null>(null);
+
+  const urlQuery = filters.query;
+
+  const push = useCallback(
+    (next: SupplierQueryFilters) => {
+      // The box is only "ahead of the URL" while a push actually changes the
+      // query; marking a no-op push would leave the ref set for ever and make
+      // the next Back navigation look like our own.
+      pushedQuery.current = next.query === urlQuery ? null : next.query;
+
+      // `replace`, not `push`: refining a filter is not a step the Back button
+      // should have to walk through one select at a time.
+      startTransition(() => router.replace(suppliersHref(next), { scroll: false }));
+    },
+    [router, urlQuery],
+  );
+
+  useEffect(() => {
+    // While a push of our own is in flight the box is ahead of the URL and must
+    // keep what the user typed; any other navigation — Back, Clear filters —
+    // is the new truth.
+    if (pushedQuery.current !== null) {
+      if (pushedQuery.current === urlQuery) pushedQuery.current = null;
+      return;
+    }
+    setDraftQuery(urlQuery);
+  }, [urlQuery]);
+
+  useEffect(() => {
+    if (draftQuery === urlQuery) return;
+
+    const timer = setTimeout(() => push({ ...filters, query: draftQuery }), SEARCH_DEBOUNCE_MS);
+
+    return () => clearTimeout(timer);
+  }, [draftQuery, urlQuery, filters, push]);
 
   const rows = useMemo(
     () =>
       suppliers
-        .filter((supplier) => supplierMatchesFilters(supplier, filters))
+        .filter((supplier) => matchesLocalFilters(supplier, local))
+        // `.sort()` mutates, and `suppliers` is a server prop: the filter above
+        // already copied, so this sorts the copy.
         .sort((a, b) => compareSuppliers(a, b, sort)),
-    [suppliers, filters, sort],
+    [suppliers, local, sort],
   );
 
   function handleSort(key: SupplierSortKey) {
@@ -443,14 +514,47 @@ export function SuppliersTable({ suppliers }: SuppliersTableProps) {
     );
   }
 
-  const filtered = isFilterActive(filters);
+  function handleFilterChange(patch: Partial<SupplierFilters>) {
+    if (patch.query !== undefined) setDraftQuery(patch.query);
+
+    if (patch.region !== undefined || patch.certification !== undefined) {
+      setLocal((current) => ({
+        region: patch.region ?? current.region,
+        certification: patch.certification ?? current.certification,
+      }));
+    }
+
+    if (
+      patch.country !== undefined ||
+      patch.status !== undefined ||
+      patch.dataSheet !== undefined
+    ) {
+      push({
+        ...filters,
+        // Text typed but not yet debounced travels with the select, so
+        // changing a filter never throws away half a search term.
+        query: draftQuery,
+        country: patch.country ?? filters.country,
+        status: patch.status ?? filters.status,
+        dataSheet: patch.dataSheet ?? filters.dataSheet,
+      });
+    }
+  }
+
+  function clearFilters() {
+    setLocal(EMPTY_LOCAL_FILTERS);
+    setDraftQuery("");
+    push({ ...EMPTY_QUERY_FILTERS });
+  }
+
+  const filtered = hasQueryFilter(filters) || hasLocalFilter(local);
 
   return (
     <>
       <SuppliersFilterBar
         suppliers={suppliers}
-        filters={filters}
-        onChange={(patch) => setFilters((current) => ({ ...current, ...patch }))}
+        filters={{ ...filters, ...local, query: draftQuery }}
+        onChange={handleFilterChange}
       />
 
       {rows.length === 0 ? (
@@ -462,7 +566,7 @@ export function SuppliersTable({ suppliers }: SuppliersTableProps) {
                 variant="secondary"
                 size="compact"
                 icon="x"
-                onClick={() => setFilters(EMPTY_SUPPLIER_FILTERS)}
+                onClick={clearFilters}
               >
                 Clear filters
               </Button>
