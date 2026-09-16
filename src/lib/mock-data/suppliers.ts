@@ -776,7 +776,3 @@ export const SUPPLIERS: readonly Supplier[] = [
     archivedAt: null,
   },
 ];
-
-export function getSupplier(id: string): Supplier | undefined {
-  return SUPPLIERS.find((supplier) => supplier.id === id);
-}
