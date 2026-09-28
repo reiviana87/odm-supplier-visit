@@ -20,6 +20,6 @@ export function getBrowserSupabase(): SupabaseClient<Database> | null {
   const config = getPublicSupabaseConfig();
   if (!config) return null;
 
-  browserClient ??= createBrowserClient<Database>(config.url, config.anonKey);
+  browserClient ??= createBrowserClient<Database>(config.url, config.publishableKey);
   return browserClient;
 }

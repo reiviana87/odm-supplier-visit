@@ -21,7 +21,7 @@ export async function updateSession(request: NextRequest): Promise<NextResponse>
   const config = getPublicSupabaseConfig();
   if (!config) return response;
 
-  const supabase = createServerClient<Database>(config.url, config.anonKey, {
+  const supabase = createServerClient<Database>(config.url, config.publishableKey, {
     cookies: {
       getAll() {
         return request.cookies.getAll();

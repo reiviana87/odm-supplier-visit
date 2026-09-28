@@ -76,9 +76,9 @@ Copy `.env.example` to `.env.local`. Never commit `.env.local`.
 
 | Variable | Required | Notes |
 |---|---|---|
-| `NEXT_PUBLIC_SUPABASE_URL` | for Supabase mode | Project URL from Supabase › Settings › API |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | for Supabase mode | Publishable key; safe in the browser — RLS is what protects the data |
-| `SUPABASE_SERVICE_ROLE_KEY` | server only | **Bypasses RLS.** Never prefix with `NEXT_PUBLIC_`, never import into a client component |
+| `NEXT_PUBLIC_SUPABASE_URL` | for Supabase mode | Project URL from Supabase › Project Settings › API keys |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | for Supabase mode | Publishable key; safe in the browser — RLS is what protects the data |
+| `SUPABASE_SECRET_KEY` | server only | **Bypasses RLS.** Never prefix with `NEXT_PUBLIC_`, never import into a client component |
 | `NEXT_PUBLIC_SITE_URL` | yes | Absolute origin; used to build auth redirect URLs |
 | `NEXT_PUBLIC_USE_MOCK_DATA` | no | `true` (default) renders the seeded data and never calls Supabase |
 

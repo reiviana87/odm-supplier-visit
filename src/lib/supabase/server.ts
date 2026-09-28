@@ -2,7 +2,7 @@ import { createServerClient } from "@supabase/ssr";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
 
-import { getPublicSupabaseConfig, getServiceRoleKey, getSupabaseUrl } from "@/lib/supabase/env";
+import { getPublicSupabaseConfig, getSupabaseSecretKey, getSupabaseUrl } from "@/lib/supabase/env";
 import type { Database } from "@/types/database";
 
 /**
@@ -24,7 +24,7 @@ export async function getServerSupabase(): Promise<SupabaseClient<Database> | nu
   // Next 16: `cookies()` is async.
   const cookieStore = await cookies();
 
-  return createServerClient<Database>(config.url, config.anonKey, {
+  return createServerClient<Database>(config.url, config.publishableKey, {
     cookies: {
       getAll() {
         return cookieStore.getAll();
@@ -45,7 +45,7 @@ export async function getServerSupabase(): Promise<SupabaseClient<Database> | nu
 }
 
 /**
- * Service-role client — bypasses row level security. Use it only for
+ * Secret-key client — bypasses row level security. Use it only for
  * privileged server work (seeding, migrations, admin actions), never to serve
  * a user request that should be filtered by RLS. It holds no session, so a
  * single instance can be reused across requests.
@@ -54,10 +54,10 @@ let serviceClient: SupabaseClient<Database> | null = null;
 
 export function getServiceSupabase(): SupabaseClient<Database> | null {
   const url = getSupabaseUrl();
-  const serviceRoleKey = getServiceRoleKey();
-  if (!url || !serviceRoleKey) return null;
+  const secretKey = getSupabaseSecretKey();
+  if (!url || !secretKey) return null;
 
-  serviceClient ??= createClient<Database>(url, serviceRoleKey, {
+  serviceClient ??= createClient<Database>(url, secretKey, {
     auth: {
       persistSession: false,
       autoRefreshToken: false,

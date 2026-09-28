@@ -5,7 +5,7 @@ against, so the app has something to render once `NEXT_PUBLIC_USE_MOCK_DATA` is 
 
 > ## ⚠ Never point this at production
 >
-> The seed writes with the **service-role key**, which bypasses row level security
+> The seed writes with the **secret key**, which bypasses row level security
 > entirely. It also deletes rows when `--reset` is passed. Read the `target` line it prints
 > before you type `--confirm`, every time.
 >
@@ -24,7 +24,7 @@ npm run seed -- --help              # usage
 ```
 
 `npm run seed` is `node --env-file=.env.local scripts/seed.mjs`, so `.env.local` must
-already hold the project URL, the anon key and the service-role key. Migrations `0001`
+already hold the project URL, the publishable key and the secret key. Migrations `0001`
 through `0005` must be applied first — the seed calls a function that `0005` defines.
 
 ### Flags
@@ -41,7 +41,7 @@ Any other argument is rejected before a connection is opened.
 ### What it refuses to do
 
 * No `--confirm` → prints the target, exits 1.
-* `SUPABASE_SERVICE_ROLE_KEY` empty → exits 1 with the reason.
+* `SUPABASE_SECRET_KEY` empty → exits 1 with the reason.
 * Supabase not configured at all → exits 1.
 * **Target already holds suppliers or reports and `--reset` was not passed → exits 1.**
   A project with rows in it may be a real one.

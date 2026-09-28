@@ -75,13 +75,13 @@ select id from storage.buckets order by id;                 -- report-images, re
 ## 3. Environment variables
 
 Copy `.env.example` to `.env.local` in the project root (it is gitignored) and fill in the
-values from **Project Settings › API**:
+values from **Project Settings › API keys**:
 
 | Variable | Where it comes from | Notes |
 |---|---|---|
 | `NEXT_PUBLIC_SUPABASE_URL` | Project URL | safe in the browser |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | `anon` / publishable key | safe in the browser — RLS is what protects the data |
-| `SUPABASE_SERVICE_ROLE_KEY` | `service_role` key | **server only**, bypasses RLS, never prefix it with `NEXT_PUBLIC_` |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | publishable key | safe in the browser — RLS is what protects the data |
+| `SUPABASE_SECRET_KEY` | secret key | **server only**, bypasses RLS, never prefix it with `NEXT_PUBLIC_` |
 | `NEXT_PUBLIC_SITE_URL` | this deployment's origin | used to build auth redirect URLs |
 | `NEXT_PUBLIC_USE_MOCK_DATA` | `true` in Phase 1 | set to `false` to read from Supabase |
 

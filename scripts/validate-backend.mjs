@@ -25,13 +25,13 @@ import { createClient } from "@supabase/supabase-js";
 // ─────────────────────────────────────────────────────────────────────────────
 
 const URL = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
-const ANON = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim();
-const SERVICE = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
+const PUBLISHABLE = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY?.trim();
+const SECRET = process.env.SUPABASE_SECRET_KEY?.trim();
 
 const PLACEHOLDERS = [
   "https://your-project-ref.supabase.co",
-  "your-anon-key",
-  "your-service-role-key",
+  "your-publishable-key",
+  "your-secret-key",
 ];
 
 function die(message) {
@@ -40,12 +40,14 @@ function die(message) {
 }
 
 if (!URL || PLACEHOLDERS.includes(URL)) die("NEXT_PUBLIC_SUPABASE_URL is not set to a real project.");
-if (!ANON || PLACEHOLDERS.includes(ANON)) die("NEXT_PUBLIC_SUPABASE_ANON_KEY is not set to a real key.");
-if (!SERVICE || PLACEHOLDERS.includes(SERVICE)) {
-  // The service role is genuinely required: creating the four role users and
+if (!PUBLISHABLE || PLACEHOLDERS.includes(PUBLISHABLE)) {
+  die("NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY is not set to a real key.");
+}
+if (!SECRET || PLACEHOLDERS.includes(SECRET)) {
+  // The secret key is genuinely required: creating the four role users and
   // setting their `profiles.role` are exactly the operations RLS forbids, and
   // there is no other way to establish the fixtures the role matrix needs.
-  die("SUPABASE_SERVICE_ROLE_KEY is required — it creates and promotes the test users.");
+  die("SUPABASE_SECRET_KEY is required — it creates and promotes the test users.");
 }
 if (!process.argv.includes("--confirm")) {
   die(
@@ -55,7 +57,7 @@ if (!process.argv.includes("--confirm")) {
   );
 }
 
-const admin = createClient(URL, SERVICE, { auth: { persistSession: false } });
+const admin = createClient(URL, SECRET, { auth: { persistSession: false } });
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Result recording
@@ -90,7 +92,7 @@ const PASSWORD = `${TAG}-${Math.random().toString(36).slice(2)}A1!`;
 const ROLES = ["admin", "manager", "editor", "viewer"];
 
 /** Signed-in clients, one per role, plus an anonymous one. */
-const clients = { anon: createClient(URL, ANON, { auth: { persistSession: false } }) };
+const clients = { anon: createClient(URL, PUBLISHABLE, { auth: { persistSession: false } }) };
 const userIds = {};
 
 async function createRoleUsers() {
@@ -111,15 +113,15 @@ async function createRoleUsers() {
     if (error) die(`could not create the ${role} user: ${error.message}`);
     userIds[role] = data.user.id;
 
-    // handle_new_user() makes every profile a viewer; promote through the
-    // service role, which is the only thing allowed to change another's role.
+    // handle_new_user() makes every profile a viewer; promote with the secret
+    // key, which is the only thing allowed to change another user's role.
     const { error: roleError } = await admin
       .from("profiles")
       .update({ role })
       .eq("id", data.user.id);
     if (roleError) die(`could not set role ${role}: ${roleError.message}`);
 
-    const client = createClient(URL, ANON, { auth: { persistSession: false } });
+    const client = createClient(URL, PUBLISHABLE, { auth: { persistSession: false } });
     const { error: signInError } = await client.auth.signInWithPassword({
       email,
       password: PASSWORD,
@@ -129,7 +131,7 @@ async function createRoleUsers() {
   }
 }
 
-/** A supplier every role test can read, created with the service role. */
+/** A supplier every role test can read, created with the secret key. */
 async function createFixtureSupplier(suffix = "a") {
   const { data, error } = await admin
     .from("suppliers")
@@ -187,7 +189,7 @@ async function testAuth() {
     .single();
   record("viewer cannot promote itself to admin", after?.role === "viewer", escalate?.message ?? `role is ${after?.role}`);
 
-  const signedOut = createClient(URL, ANON, { auth: { persistSession: false } });
+  const signedOut = createClient(URL, PUBLISHABLE, { auth: { persistSession: false } });
   await signedOut.auth.signOut();
   const { data: noUser } = await signedOut.auth.getUser();
   record("signed-out client has no user", !noUser?.user);

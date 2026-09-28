@@ -14,8 +14,8 @@
 /** Values shipped in `.env.example`; treated as "still not filled in". */
 const PLACEHOLDERS: readonly string[] = [
   "https://your-project-ref.supabase.co",
-  "your-anon-key",
-  "your-service-role-key",
+  "your-publishable-key",
+  "your-secret-key",
 ];
 
 /** Trim, and collapse empty strings and untouched `.env.example` values to null. */
@@ -31,12 +31,17 @@ export function getSupabaseUrl(): string | null {
 }
 
 /**
- * Publishable (anon) key. Safe in the browser — row level security protects
- * the data, not the key. Private on purpose: clients take the URL and the key
- * together, through `getPublicSupabaseConfig()`.
+ * Publishable key. Safe in the browser — row level security protects the data,
+ * not the key. Private on purpose: clients take the URL and the key together,
+ * through `getPublicSupabaseConfig()`.
+ *
+ * This is Supabase's current key model. The legacy name for it was
+ * `NEXT_PUBLIC_SUPABASE_ANON_KEY`; nothing reads that any more, and no fallback
+ * is kept, because the project this app talks to has not been provisioned yet —
+ * there is no deployment holding the old spelling to stay compatible with.
  */
-function getSupabaseAnonKey(): string | null {
-  return clean(process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
+function getSupabasePublishableKey(): string | null {
+  return clean(process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY);
 }
 
 /**
@@ -52,7 +57,7 @@ export function getSiteUrl(): string {
 
 /** True once both public Supabase values are present. */
 export function isSupabaseConfigured(): boolean {
-  return getSupabaseUrl() !== null && getSupabaseAnonKey() !== null;
+  return getSupabaseUrl() !== null && getSupabasePublishableKey() !== null;
 }
 
 /**
@@ -73,25 +78,29 @@ export function isMockMode(): boolean {
 }
 
 /** The pair needed by every browser/server client, or null when unconfigured. */
-export function getPublicSupabaseConfig(): { url: string; anonKey: string } | null {
+export function getPublicSupabaseConfig(): { url: string; publishableKey: string } | null {
   const url = getSupabaseUrl();
-  const anonKey = getSupabaseAnonKey();
-  if (!url || !anonKey) return null;
-  return { url, anonKey };
+  const publishableKey = getSupabasePublishableKey();
+  if (!url || !publishableKey) return null;
+  return { url, publishableKey };
 }
 
 /**
- * Service-role key — SERVER ONLY. It bypasses row level security, so calling
- * this from a client bundle is a programming error and throws loudly rather
- * than returning a value that could be shipped to a browser. Returns null when
- * the key is simply not configured, which is the normal Phase 1 state.
+ * Secret key — SERVER ONLY. It bypasses row level security, so calling this
+ * from a client bundle is a programming error and throws loudly rather than
+ * returning a value that could be shipped to a browser. Returns null when the
+ * key is simply not configured, which is the normal unprovisioned state.
+ *
+ * Deliberately not `NEXT_PUBLIC_`-prefixed: that prefix is what tells the
+ * bundler to inline a value into the client bundle, so prefixing this one would
+ * publish it. The legacy name was `SUPABASE_SERVICE_ROLE_KEY`.
  */
-export function getServiceRoleKey(): string | null {
+export function getSupabaseSecretKey(): string | null {
   if (typeof window !== "undefined") {
     throw new Error(
-      "getServiceRoleKey() was called in the browser. The service-role key is server-only — " +
+      "getSupabaseSecretKey() was called in the browser. The secret key is server-only — " +
         "import it from a Server Component, Route Handler or Server Action.",
     );
   }
-  return clean(process.env.SUPABASE_SERVICE_ROLE_KEY);
+  return clean(process.env.SUPABASE_SECRET_KEY);
 }

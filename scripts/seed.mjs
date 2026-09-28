@@ -18,13 +18,13 @@
  * alias and extensionless relative imports — and nothing is transpiled or
  * generated, so the seed cannot drift from the fixtures.
  *
- * ── Why the service-role key ─────────────────────────────────────────────────
+ * ── Why the secret key ───────────────────────────────────────────────────────
  * Seeding runs with no signed-in user, and every table carries the 0004 policies,
  * which decide what a *profile* may write. There is no profile here, so every
  * insert would be refused. This is the one place in the codebase where bypassing
  * RLS is the correct answer rather than a shortcut — the app itself never uses
  * this key. Rows therefore land with `created_by`/`updated_by` null, which 0003
- * already describes as the service-role import case.
+ * already describes as the secret-key import case.
  *
  * ── Safety (§36 — never drop production-like data without approval) ──────────
  * The target project is printed before anything is written; `--confirm` is
@@ -87,7 +87,7 @@ function loadSource(relativePath) {
   return import(pathToFileURL(path.join(SRC, relativePath)).href);
 }
 
-const { getSupabaseUrl, getServiceRoleKey, isSupabaseConfigured, isMockMode } =
+const { getSupabaseUrl, getSupabaseSecretKey, isSupabaseConfigured, isMockMode } =
   await loadSource("lib/supabase/env.ts");
 const { SUPPLIERS } = await loadSource("lib/mock-data/suppliers.ts");
 const { CERTIFICATES_BY_SUPPLIER } = await loadSource("lib/mock-data/certificates.ts");
@@ -292,7 +292,7 @@ Seed a DEVELOPMENT Supabase project with the ODM Supplier Visit fixtures.
               them. Rows the seed does not recognise are never deleted.
   --help      this text.
 
-NEVER point this at production. It writes with the service-role key and
+NEVER point this at production. It writes with the secret key and
 bypasses row level security.
 `.trim();
 
@@ -347,14 +347,14 @@ function must(result, what) {
 if (!isSupabaseConfigured()) {
   fatal(
     "Supabase is not configured. NEXT_PUBLIC_SUPABASE_URL and " +
-      "NEXT_PUBLIC_SUPABASE_ANON_KEY still hold the .env.example placeholders, so " +
+      "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY still hold the .env.example placeholders, so " +
       "there is no project to seed. Fill in .env.local and run this again.",
   );
 }
 
 const supabaseUrl = getSupabaseUrl();
 
-// The banner comes before every other check, including the service-role one:
+// The banner comes before every other check, including the secret-key one:
 // the operator's first question is always "which project is this about to
 // write to", and they must be able to answer it from any run of the script,
 // including the ones that go on to refuse.
@@ -367,13 +367,13 @@ if (isMockMode()) {
 }
 console.log("");
 
-const serviceRoleKey = getServiceRoleKey();
+const secretKey = getSupabaseSecretKey();
 
-if (!serviceRoleKey) {
+if (!secretKey) {
   fatal(
-    "SUPABASE_SERVICE_ROLE_KEY is empty in .env.local. Seeding runs without a " +
-      "signed-in user, so it needs the service-role key to get past row level " +
-      "security. Copy it from Project Settings › API › service_role.",
+    "SUPABASE_SECRET_KEY is empty in .env.local. Seeding runs without a " +
+      "signed-in user, so it needs the secret key to get past row level " +
+      "security. Copy it from Project Settings › API keys › secret.",
   );
 }
 
@@ -386,7 +386,7 @@ if (!confirmed) {
   );
 }
 
-const supabase = createClient(supabaseUrl, serviceRoleKey, {
+const supabase = createClient(supabaseUrl, secretKey, {
   auth: { persistSession: false, autoRefreshToken: false },
 });
 
