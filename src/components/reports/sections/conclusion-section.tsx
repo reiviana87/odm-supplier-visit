@@ -1,8 +1,10 @@
 "use client";
 
-import { useId, useState } from "react";
+import { useCallback, useId, useState, useTransition } from "react";
 
+import { AiSuggestion } from "@/components/ai/ai-suggestion";
 import { useSectionDraft } from "@/components/reports/section-draft";
+import { generateConclusion } from "@/lib/ai/actions";
 import { Blueprint } from "@/components/ui/blueprint";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/field";
@@ -36,7 +38,6 @@ const CONCLUSION_SOURCES = [
   "Photo Analysis",
 ] as const;
 
-const GENERATOR_PHASE = "The conclusion generator arrives in Phase 6";
 
 function SourceChecklist({ sourcesId }: { sourcesId: string }) {
   return (
@@ -87,12 +88,31 @@ function SourceChecklist({ sourcesId }: { sourcesId: string }) {
   );
 }
 
-export function ConclusionSection() {
+export function ConclusionSection({ reportId }: { reportId: string }) {
   const { toast } = useToast();
   const textId = useId();
   const sourcesId = useId();
 
   const { draft, setBody } = useSectionDraft("conclusion");
+  const [proposal, setProposal] = useState<
+    { text: string; omitted: string[] } | null
+  >(null);
+  const [aiBusy, startAi] = useTransition();
+
+  /**
+   * README §17 — propose, never save. The conclusion is the part of the report
+   * a reader acts on, so it is the last place an unreviewed sentence belongs.
+   */
+  const propose = useCallback(() => {
+    startAi(async () => {
+      const result = await generateConclusion({ reportId });
+      if (!result.ok) {
+        toast(result.error.message, "error");
+        return;
+      }
+      setProposal({ text: result.data.text, omitted: result.data.omitted });
+    });
+  }, [reportId, toast]);
   const [writing, setWriting] = useState(draft.body.length > 0);
 
   const placeholder =
@@ -101,6 +121,21 @@ export function ConclusionSection() {
 
   return (
     <div style={{ maxWidth: 860 }}>
+      {/* §17 — the proposal is reviewed here; accepting writes it to the draft
+          and autosave stores it like any other edit. */}
+      <AiSuggestion
+        suggestion={proposal?.text ?? null}
+        omitted={proposal?.omitted}
+        busy={aiBusy}
+        onAccept={(text) => {
+          setBody(text);
+          setProposal(null);
+          toast("Conclusion accepted — autosave will store it.");
+        }}
+        onRegenerate={propose}
+        onDiscard={() => setProposal(null)}
+      />
+
       {writing ? (
         <>
           <label className="sr-only" htmlFor={textId}>
@@ -136,7 +171,8 @@ export function ConclusionSection() {
               variant="ghost"
               size="compact"
               style={{ fontSize: 11.5, color: "var(--color-neutral-700)" }}
-              onClick={() => toast(GENERATOR_PHASE)}
+              onClick={propose}
+              disabled={aiBusy}
             >
               Generate instead
             </Button>
@@ -168,7 +204,8 @@ export function ConclusionSection() {
             <Button
               variant="primary"
               icon="spark"
-              onClick={() => toast(GENERATOR_PHASE)}
+              onClick={propose}
+              disabled={aiBusy}
             >
               Generate Conclusion
             </Button>

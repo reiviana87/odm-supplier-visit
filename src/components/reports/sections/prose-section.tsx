@@ -1,8 +1,11 @@
 "use client";
 
-import { useId, useMemo } from "react";
+import { useCallback, useId, useMemo, useState, useTransition } from "react";
 
+import { AiSuggestion } from "@/components/ai/ai-suggestion";
 import { useSectionDraft } from "@/components/reports/section-draft";
+import { improveText } from "@/lib/ai/actions";
+import type { ImproveAction } from "@/lib/ai/schemas";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/field";
 import { Icon } from "@/components/ui/icon";
@@ -21,9 +24,12 @@ import { SECTIONS, type SectionId } from "@/types/domain";
 export function AiActionsRow({
   actions,
   onAction,
+  busy = false,
 }: {
   actions: readonly string[];
   onAction: (action: string) => void;
+  /** Disables the row while a request is in flight, so one click means one call. */
+  busy?: boolean;
 }) {
   return (
     <div
@@ -45,7 +51,12 @@ export function AiActionsRow({
         AI actions
       </span>
       {actions.map((action) => (
-        <Button key={action} size="compact" onClick={() => onAction(action)}>
+        <Button
+          key={action}
+          size="compact"
+          disabled={busy}
+          onClick={() => onAction(action)}
+        >
           {action}
         </Button>
       ))}
@@ -58,8 +69,16 @@ export function AiActionsRow({
  * the surface, not the model call, so every action says where it lands.
  */
 export function aiActionMessage(action: string): string {
-  return `${action} — AI drafting arrives in Phase 4`;
+  return `${action} — this action is not wired to the assistant yet.`;
 }
+
+/** The approved button labels, mapped onto the documented §14 actions. */
+const ACTION_BY_LABEL: Record<string, ImproveAction> = {
+  "Improve with AI": "professional",
+  Shorten: "concise",
+  "Make More Technical": "technical",
+  "Make More Executive": "executive",
+};
 
 /* ═══════════════════════════════════════════════════════════════════════════
    Formatting toolbar — README §4 "Rich text editor" [INFERRED]:
@@ -235,7 +254,14 @@ function plural(count: number, noun: string): string {
  * printed a fixed "2 paragraphs · 118 words"; the seeded §1 is 2 paragraphs and
  * 87 words, and this renders what is actually there.
  */
-export function ProseSection({ sectionId }: { sectionId: ProseSectionId }) {
+export function ProseSection({
+  sectionId,
+  reportId,
+}: {
+  sectionId: ProseSectionId;
+  /** The report the assistant is asked about, and where the audit row lands. */
+  reportId: string;
+}) {
   const { toast } = useToast();
   const labelId = useId();
   const definition =
@@ -246,6 +272,30 @@ export function ProseSection({ sectionId }: { sectionId: ProseSectionId }) {
   // version, so binding the textarea to local state here would leave the save
   // path with nothing to send (Phase 2 section 18).
   const { draft, setBody } = useSectionDraft(sectionId);
+  const [suggestion, setSuggestion] = useState<{ text: string; summary: string } | null>(null);
+  const [lastAction, setLastAction] = useState<ImproveAction | null>(null);
+  const [aiBusy, startAi] = useTransition();
+
+  const runImprove = useCallback(
+    (action: ImproveAction) => {
+      setLastAction(action);
+      startAi(async () => {
+        const result = await improveText({
+          reportId,
+          sectionId,
+          sectionLabel: definition.label,
+          text: draft.body,
+          action,
+        });
+        if (!result.ok) {
+          toast(result.error.message, "error");
+          return;
+        }
+        setSuggestion({ text: result.data.text, summary: result.data.summary });
+      });
+    },
+    [definition.label, draft.body, reportId, sectionId, toast],
+  );
   const text = draft.body;
   const counts = useMemo(
     () => ({ words: countWords(text), paragraphs: countParagraphs(text) }),
@@ -256,7 +306,33 @@ export function ProseSection({ sectionId }: { sectionId: ProseSectionId }) {
     <div style={{ maxWidth: "var(--writing-column)" }}>
       <AiActionsRow
         actions={PROSE_AI_ACTIONS}
-        onAction={(action) => toast(aiActionMessage(action))}
+        busy={aiBusy}
+        onAction={(action) => {
+          const mapped = ACTION_BY_LABEL[action];
+          if (!mapped) {
+            toast(
+              action === "Generate from Transcript"
+                ? "Add a transcript in the Sources rail and analyse it — findings are inserted from there."
+                : aiActionMessage(action),
+            );
+            return;
+          }
+          runImprove(mapped);
+        }}
+      />
+
+      {/* §14 — the proposal never overwrites the section; the user accepts it. */}
+      <AiSuggestion
+        suggestion={suggestion?.text ?? null}
+        summary={suggestion?.summary}
+        busy={aiBusy}
+        onAccept={(text) => {
+          setBody(text);
+          setSuggestion(null);
+          toast("Suggestion accepted — autosave will store it.");
+        }}
+        onRegenerate={() => lastAction && runImprove(lastAction)}
+        onDiscard={() => setSuggestion(null)}
       />
 
       <label className="sr-only" htmlFor={labelId}>

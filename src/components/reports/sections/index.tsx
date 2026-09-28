@@ -88,7 +88,7 @@ function sectionBody(
     case "partners":
       // The text itself lives on the editor's section draft, so the prose
       // sections need nothing from the report but their own id.
-      return <ProseSection sectionId={sectionId} />;
+      return <ProseSection sectionId={sectionId} reportId={report.id} />;
     case "company":
       return <CompanySection report={report} />;
     case "products":
@@ -101,7 +101,7 @@ function sectionBody(
       return <CertificatesSection report={report} certificates={certificates} />;
     case "conclusion":
       // The conclusion is its section's body, which the editor draft holds.
-      return <ConclusionSection />;
+      return <ConclusionSection reportId={report.id} />;
     // README §16 — the three image regions, each with its own export geometry.
     case "product-images":
       return photoSection("MAIN_PRODUCT_IMAGES", report, photos);
