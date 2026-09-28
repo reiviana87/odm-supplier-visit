@@ -87,18 +87,50 @@ Copy `.env.example` to `.env.local`. Never commit `.env.local`.
 ## Supabase setup
 
 1. Create a project at <https://supabase.com/dashboard>.
-2. Run the migrations in order — see [`supabase/README.md`](./supabase/README.md):
-   - `supabase/migrations/0001_initial_schema.sql`
-   - `supabase/migrations/0002_row_level_security.sql`
+2. Run the migrations **in order**, pasting each into the dashboard SQL editor (or
+   `supabase db push` if you have the CLI). They are cumulative and must not be skipped:
 
-   Either paste them into the dashboard SQL editor, or use the CLI:
+   | # | File | What it adds |
+   |---|---|---|
+   | 0001 | `0001_initial_schema.sql` | 17 tables, 7 enums, triggers, the three private storage buckets |
+   | 0002 | `0002_row_level_security.sql` | the uniform RLS baseline |
+   | 0003 | `0003_phase2_schema.sql` | Phase 2 columns, indexes, the `report_sections.version` trigger |
+   | 0004 | `0004_role_based_rls.sql` | replaces 0002 with the admin/manager/editor/viewer model |
+   | 0005 | `0005_report_creation_rpc.sql` | `create_report_with_snapshot`, `refresh_report_snapshot` |
+   | 0006 | `0006_photo_dimensions_and_transcripts.sql` | image dimensions, transcript text, storage object policies |
+
+3. **Verify the result** — paste [`supabase/VALIDATE.sql`](./supabase/VALIDATE.sql) into
+   the SQL editor. It is read-only and asserts every table, enum, function, trigger,
+   column, unique index and bucket the application depends on. A clean CLI run is not
+   evidence that the schema is right; this is.
+4. Put the URL and keys into `.env.local` and set `NEXT_PUBLIC_USE_MOCK_DATA=false`.
+5. Enable email sign-in under Authentication › Providers.
+6. **Create the first administrator.** Every profile is born a `viewer` and only an admin
+   may promote anyone, so a fresh project has nobody who can:
 
    ```bash
-   supabase link --project-ref <your-project-ref>
-   supabase db push
+   npm run create-admin -- --email you@ebara.com
    ```
-3. Put the URL and keys into `.env.local` and set `NEXT_PUBLIC_USE_MOCK_DATA=false`.
-4. Regenerate the database types when the schema changes:
+
+   It never sets a password — Supabase invites the user and they choose their own.
+7. Seed the development data, after reading the target line it prints:
+
+   ```bash
+   npm run seed -- --confirm
+   ```
+
+8. Exercise the backend end to end:
+
+   ```bash
+   npm run validate:backend -- --confirm
+   ```
+
+   This signs in as one throwaway user per role and checks the RLS matrix, that report
+   creation is atomic, that the supplier snapshot stops following the supplier, that the
+   version trigger fires, and that a stale write is distinguishable from a forbidden one.
+   It removes everything it creates.
+
+9. Regenerate the database types when the schema changes:
 
    ```bash
    supabase gen types typescript --project-id <your-project-ref> > src/types/database.ts
@@ -132,11 +164,34 @@ Two decisions worth knowing:
 The app is Vercel-ready with no extra configuration.
 
 1. Import the repository at <https://vercel.com/new>.
-2. Add the environment variables above to the Vercel project (Production and Preview).
-3. Set `NEXT_PUBLIC_SITE_URL` to the deployment origin.
-4. Add `<origin>/auth/callback` to Supabase › Authentication › URL Configuration.
+2. Add the environment variables below to the Vercel project (Production and Preview).
+   `SUPABASE_SECRET_KEY` and `ANTHROPIC_API_KEY` are server-only — never give either the
+   `NEXT_PUBLIC_` prefix, which is what tells the bundler to inline a value into the
+   browser bundle.
+
+   | Name | Value |
+   |---|---|
+   | `NEXT_PUBLIC_SUPABASE_URL` | the project URL |
+   | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | the publishable key |
+   | `SUPABASE_SECRET_KEY` | the secret key |
+   | `NEXT_PUBLIC_USE_MOCK_DATA` | `false` |
+   | `NEXT_PUBLIC_SITE_URL` | the production origin |
+   | `ANTHROPIC_API_KEY` | the Anthropic key (optional — the app works without AI) |
+   | `ANTHROPIC_MODEL` | optional; defaults to a current Sonnet-class model |
+
+3. Set `NEXT_PUBLIC_SITE_URL` to the deployment origin and redeploy — environment
+   changes do not apply to an existing build.
+4. In Supabase › Authentication › URL Configuration set the Site URL to the exact
+   production origin and add `<origin>/auth/callback` as a redirect URL, plus
+   `http://localhost:3000/auth/callback` for local development.
 
 Build command `npm run build`, output directory `.next` — both are the defaults.
+
+### Verifying a deployment
+
+Vercel reporting "Ready" is not the same as the application working. Sign in on the
+deployed origin, create a supplier, create a report, edit a section and reload it,
+upload a photograph, and export the Word file.
 
 ---
 
@@ -183,19 +238,21 @@ src/
 
 ## What is intentionally not implemented yet
 
-Phase 1 deliberately stops at the foundation. The following are specified in the handoff
-and have extension points in the code, but no behaviour:
-
-- Anthropic API calls and every AI surface — transcript analysis, text rewriting, photo
-  caption generation, conclusion generation (handoff §11–§13)
-- Full photo management: upload pipeline, bulk captioning, drag reordering, the appendix
-  layout calculator (handoff §10, §14)
-- DOCX generation, Word template parsing and placeholder replacement (handoff §15, §16)
-- Persisted autosave to Supabase and the IndexedDB offline queue (handoff §7) — the state
-  machine and all five indicator states exist; only the transport is missing
-- Camera capture and offline sync in Visit Mode (handoff §17)
-- n8n, SharePoint, Teams and email workflows
-- Advanced per-report permissions, knowledge-base search, supplier comparison, scorecards
+- **A corporate Word template.** The export generates its own professional A4 document
+  (`src/lib/export/docx.ts`). The template tables and the placeholder vocabulary exist,
+  but no `.dotx` has been supplied, so nothing claims to reproduce one. When a template
+  arrives, the placement swaps at the call site and this generator stays as the fallback.
+- **Plaud API integration and in-app audio transcription.** A transcript enters as text —
+  pasted, or a `.txt`/`.md`. `.docx` and `.pdf` are refused by the picker rather than
+  accepted and stored as something unreadable.
+- **PDF export**, the advanced template designer, and a permissions administration UI.
+- **Offline-first synchronisation.** Autosave holds a pending patch in memory and flushes
+  it; there is no IndexedDB queue, and Visit Mode uploads need a connection.
+- **HEIC/HEIF photographs.** Refused at the picker with the iPhone setting that fixes it,
+  because Word cannot place them and a silently missing photograph is worse than a
+  refused upload.
+- **An in-app document preview.** Export the file to see it.
+- n8n, SharePoint, Teams and email workflows; knowledge-base search; supplier scorecards.
 
 ### Where the spec and the approved capture disagree
 
