@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 
 import { LoginForm } from "@/components/auth/login-form";
+import { RecoveryHandoff } from "@/components/auth/recovery-handoff";
 
 export const metadata: Metadata = {
   title: "Sign in",
@@ -147,7 +148,12 @@ export default async function LoginPage({
       </div>
 
       <div className="grid place-items-center" style={{ padding: 40 }}>
-        <LoginForm initialError={message} />
+        <div style={{ width: "min(360px, 100%)" }}>
+          {/* A recovery link lands here with its tokens in the URL fragment,
+              which only the browser can read. */}
+          <RecoveryHandoff />
+          <LoginForm initialError={message} />
+        </div>
       </div>
     </div>
   );
