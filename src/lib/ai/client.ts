@@ -16,14 +16,35 @@ import Anthropic from "@anthropic-ai/sdk";
  */
 
 /**
- * The model the assistant runs on. Configurable because the right model changes
- * faster than this code does; the default is a current Sonnet-class model,
- * which is the sensible balance of quality and latency for report drafting.
+ * The model each task runs on.
+ *
+ * Two of these are interactive and frequent: the author clicks and waits, and
+ * the work is rewriting text they already wrote. Sonnet is the right trade —
+ * faster, and the quality is there.
+ *
+ * The other two carry judgement. Transcript analysis has to tell what was said
+ * from what was implied, and the conclusion becomes the recommendation someone
+ * acts on. Those are worth the slower, more capable model; both run once per
+ * report, so the extra cost is cents.
+ *
+ * `ANTHROPIC_MODEL` overrides all four when set — useful for pinning a version
+ * or testing one model across the board.
  */
-const DEFAULT_MODEL = "claude-sonnet-5";
+export type AiTask =
+  | "improve_text"
+  | "photo_caption"
+  | "transcript_analysis"
+  | "conclusion";
 
-export function getAnthropicModel(): string {
-  return process.env.ANTHROPIC_MODEL?.trim() || DEFAULT_MODEL;
+const MODEL_BY_TASK: Record<AiTask, string> = {
+  improve_text: "claude-sonnet-5",
+  photo_caption: "claude-sonnet-5",
+  transcript_analysis: "claude-opus-5",
+  conclusion: "claude-opus-5",
+};
+
+export function getAnthropicModel(task: AiTask): string {
+  return process.env.ANTHROPIC_MODEL?.trim() || MODEL_BY_TASK[task];
 }
 
 function getApiKey(): string | null {

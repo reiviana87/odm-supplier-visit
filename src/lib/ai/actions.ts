@@ -22,6 +22,7 @@ import {
   aiOk,
   getAnthropic,
   getAnthropicModel,
+  type AiTask,
   isAiConfigured,
   toAiError,
   type AiResult,
@@ -51,12 +52,6 @@ import type { SupplierSnapshot } from "@/types/domain";
 /** Generous enough for a full conclusion, bounded so one call cannot run away. */
 const MAX_TOKENS = 4096;
 
-type GenerationType =
-  | "improve_text"
-  | "transcript_analysis"
-  | "photo_caption"
-  | "conclusion";
-
 async function guard(): Promise<AiResult<{ userId: string }>> {
   const user = await requireUser();
   if (!user) return aiFail("unknown", "Sign in to use the assistant.");
@@ -73,7 +68,7 @@ async function guard(): Promise<AiResult<{ userId: string }>> {
  */
 async function recordGeneration(input: {
   reportId: string | null;
-  type: GenerationType;
+  type: AiTask;
   sectionId: string | null;
   output: string;
   userId: string;
@@ -87,7 +82,7 @@ async function recordGeneration(input: {
       kind: input.type,
       section_id: input.sectionId,
       output: input.output.slice(0, 50_000),
-      model: getAnthropicModel(),
+      model: getAnthropicModel(input.type),
       // 'proposed' is the truthful state: nothing here has been accepted, and
       // accepting happens through an ordinary section save.
       status: "proposed",
@@ -99,14 +94,14 @@ async function recordGeneration(input: {
 }
 
 /** One text completion, returning the raw reply. */
-async function complete(prompt: string): Promise<AiResult<string>> {
+async function complete(prompt: string, task: AiTask): Promise<AiResult<string>> {
   const client = getAnthropic();
   if (!client) return aiFail("not_configured");
   if (prompt.length > MAX_INPUT_CHARS) return aiFail("too_large");
 
   try {
     const message = await client.messages.create({
-      model: getAnthropicModel(),
+      model: getAnthropicModel(task),
       max_tokens: MAX_TOKENS,
       messages: [{ role: "user", content: prompt }],
     });
@@ -145,7 +140,10 @@ export async function improveText(input: {
     return aiFail("invalid_response", "There is not enough text to improve yet.");
   }
 
-  const reply = await complete(improveTextPrompt(text, input.action, input.sectionLabel));
+  const reply = await complete(
+    improveTextPrompt(text, input.action, input.sectionLabel),
+    "improve_text",
+  );
   if (!reply.ok) return reply;
 
   const parsed = parseAiJson(reply.data, improvedTextSchema);
@@ -185,6 +183,7 @@ export async function analyzeTranscript(input: {
 
   const reply = await complete(
     transcriptAnalysisPrompt(transcript, report.data.report.supplierSnapshot),
+    "transcript_analysis",
   );
   if (!reply.ok) return reply;
 
@@ -252,7 +251,7 @@ export async function generatePhotoCaption(input: {
 
   try {
     const message = await client.messages.create({
-      model: getAnthropicModel(),
+      model: getAnthropicModel("photo_caption"),
       max_tokens: 1024,
       messages: [
         {
@@ -338,7 +337,10 @@ export async function generateConclusion(input: {
     return aiFail("unknown", "This report could not be read, so no conclusion was proposed.");
   }
 
-  const reply = await complete(conclusionPrompt(report.data.report, input.findings ?? []));
+  const reply = await complete(
+    conclusionPrompt(report.data.report, input.findings ?? []),
+    "conclusion",
+  );
   if (!reply.ok) return reply;
 
   const parsed = parseAiJson(reply.data, conclusionSchema);
@@ -356,6 +358,6 @@ export async function generateConclusion(input: {
 }
 
 /** Whether the AI affordances should render at all (§12). */
-export async function aiStatus(): Promise<{ configured: boolean; model: string | null }> {
-  return { configured: isAiConfigured(), model: isAiConfigured() ? getAnthropicModel() : null };
+export async function aiStatus(): Promise<{ configured: boolean }> {
+  return { configured: isAiConfigured() };
 }
