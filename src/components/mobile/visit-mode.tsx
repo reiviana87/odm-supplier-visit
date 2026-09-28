@@ -1,12 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useRef, useState } from "react";
 
 import { Blueprint } from "@/components/ui/blueprint";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import { CompletionIndicator } from "@/components/ui/progress";
 import { useToast } from "@/components/ui/toast";
+import { uploadReportPhoto } from "@/lib/data/photo-actions";
 import { saveObservations } from "@/lib/data/report-actions";
 import type { Observation, ReportStatus, SectionId } from "@/types/domain";
 
@@ -83,6 +84,21 @@ export interface VisitModeProps {
   observationPhoto: VisitPhoto;
 }
 
+/** Natural dimensions, or zeros when the browser cannot decode the file. */
+async function measureImage(file: File): Promise<{ width: number; height: number }> {
+  const url = URL.createObjectURL(file);
+  try {
+    const image = new Image();
+    return await new Promise<{ width: number; height: number }>((resolve) => {
+      image.onload = () => resolve({ width: image.naturalWidth, height: image.naturalHeight });
+      image.onerror = () => resolve({ width: 0, height: 0 });
+      image.src = url;
+    });
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
 export function VisitMode({
   reportId,
   supplierName,
@@ -100,9 +116,53 @@ export function VisitMode({
 }: VisitModeProps) {
   const { toast } = useToast();
   const [screen, setScreen] = useState<VisitScreen>("home");
+  const cameraRef = useRef<HTMLInputElement>(null);
+  const libraryRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(0);
+
   const [tally, setTally] = useState(counters);
   const [filed, setFiled] = useState<readonly Observation[]>(observations);
   const [saving, setSaving] = useState(false);
+
+  /**
+   * Field photographs go straight to the appendix — §8's other two regions are
+   * editorial choices made at a desk, and a phone in a factory is not the place
+   * to make them.
+   */
+  const sendPhotos = useCallback(
+    async (files: FileList | null) => {
+      if (!files || files.length === 0) return;
+      const list = Array.from(files);
+      setUploading(list.length);
+
+      let stored = 0;
+      let firstError: string | null = null;
+
+      for (const file of list) {
+        const size = await measureImage(file);
+        const result = await uploadReportPhoto({
+          reportId,
+          region: "APPENDIX_IMAGES",
+          fileName: file.name,
+          mimeType: file.type || "image/jpeg",
+          width: size.width,
+          height: size.height,
+          capturedAt: file.lastModified ? new Date(file.lastModified).toISOString() : null,
+          file,
+        });
+        if (result.ok) stored += 1;
+        else if (!firstError) firstError = result.error.message;
+      }
+
+      setUploading(0);
+      if (stored > 0) {
+        setTally((current) => ({ ...current, photos: current.photos + stored }));
+        toast(`${stored} photograph${stored === 1 ? "" : "s"} uploaded to the appendix.`);
+      }
+      if (firstError) toast(firstError, "error");
+    },
+    [reportId, toast],
+  );
 
   /**
    * File one observation into §6.
@@ -156,8 +216,13 @@ export function VisitMode({
   function handleAction(action: QuickActionId) {
     switch (action) {
       case "photo":
-        setScreen("camera");
-        toast("Live camera lands with the photo pipeline — the viewfinder shows a sample frame");
+        // The real camera, not the mocked viewfinder: `capture` hands the OS
+        // camera straight back as a file, which is the whole flow on a phone.
+        if (uploading > 0) {
+          toast(`Still uploading ${uploading} photograph${uploading === 1 ? "" : "s"}…`);
+          return;
+        }
+        cameraRef.current?.click();
         return;
       case "note":
         setScreen("note");
@@ -169,7 +234,11 @@ export function VisitMode({
         setScreen("report");
         return;
       case "upload":
-        toast("Uploading files from the field lands with the photo pipeline");
+        if (uploading > 0) {
+          toast(`Still uploading ${uploading} photograph${uploading === 1 ? "" : "s"}…`);
+          return;
+        }
+        libraryRef.current?.click();
         return;
       case "voice":
         toast("Voice capture and transcript analysis land with transcript support");
@@ -188,6 +257,31 @@ export function VisitMode({
         flexDirection: "column",
       }}
     >
+      {/* One picker per affordance: `capture` opens the camera, the other the
+          photo library. Hidden, because the approved grid is the UI. */}
+      <input
+        ref={cameraRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        hidden
+        onChange={(event) => {
+          void sendPhotos(event.target.files);
+          event.target.value = "";
+        }}
+      />
+      <input
+        ref={libraryRef}
+        type="file"
+        accept="image/jpeg,image/png,image/webp"
+        multiple
+        hidden
+        onChange={(event) => {
+          void sendPhotos(event.target.files);
+          event.target.value = "";
+        }}
+      />
+
       <VisitHeader
         supplierName={supplierName}
         visitLine={visitLine}
