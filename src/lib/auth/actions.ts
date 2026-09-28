@@ -56,6 +56,72 @@ export async function signInWithPassword(formData: FormData): Promise<AuthResult
 }
 
 /**
+ * Send a password reset email — README §1.1.
+ *
+ * This exists because an account can legitimately have no password at all: a
+ * user created by `create-admin` is invited rather than given one, and if that
+ * invitation never arrives there is otherwise no way into the application.
+ *
+ * The reply is deliberately the same whether or not the address is registered.
+ * Telling a stranger which corporate addresses exist is a disclosure the reset
+ * flow does not need to make.
+ */
+export async function requestPasswordReset(formData: FormData): Promise<AuthResult> {
+  const email = String(formData.get("email") ?? "").trim();
+  if (!email) return { error: "Enter your work email so we know where to send the link." };
+
+  if (isMockMode()) return { ok: true };
+
+  const supabase = await getServerSupabase();
+  if (!supabase) return { error: SERVER_UNAVAILABLE };
+
+  await supabase.auth.resetPasswordForEmail(email, {
+    redirectTo: `${getSiteUrl()}/auth/callback?next=/set-password`,
+  });
+
+  return { ok: true };
+}
+
+/**
+ * Set the password of the signed-in user.
+ *
+ * Reached from the reset link, which lands with a session already established,
+ * so the only thing left is to choose the password. It is also reachable from
+ * Settings by anyone who simply wants to change theirs.
+ */
+export async function setPassword(formData: FormData): Promise<AuthResult> {
+  const password = String(formData.get("password") ?? "");
+  const confirm = String(formData.get("confirm") ?? "");
+
+  if (password.length < 10) {
+    return { error: "Use at least 10 characters. Length is what makes a password hard to guess." };
+  }
+  if (password !== confirm) {
+    return { error: "The two passwords do not match." };
+  }
+
+  if (isMockMode()) redirect("/");
+
+  const supabase = await getServerSupabase();
+  if (!supabase) return { error: SERVER_UNAVAILABLE };
+
+  const { data } = await supabase.auth.getUser();
+  if (!data.user) {
+    return {
+      error: "That reset link has expired. Ask for a new one from the sign-in screen.",
+    };
+  }
+
+  const { error } = await supabase.auth.updateUser({ password });
+  if (error) {
+    return { error: "The password could not be set. Try a different one." };
+  }
+
+  revalidatePath("/", "layout");
+  redirect("/");
+}
+
+/**
  * Microsoft 365 (Entra ID) single sign-on. Supabase returns the provider URL
  * and the browser is redirected to it; the provider then calls back to
  * `${NEXT_PUBLIC_SITE_URL}/auth/callback`, which exchanges the code for a

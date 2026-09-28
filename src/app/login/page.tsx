@@ -27,8 +27,21 @@ export default async function LoginPage({
 }: {
   searchParams: Promise<{ error?: string }>;
 }) {
-  // The OAuth callback bounces failures back here as ?error=…
+  // The OAuth callback and the reset flow bounce failures back here as
+  // ?error=…, which is a code, not a sentence. Rendering it raw would show the
+  // user "link-expired"; anything unrecognised gets the neutral line rather
+  // than whatever a caller happened to put in the URL.
   const { error } = await searchParams;
+
+  const ERROR_MESSAGES: Record<string, string> = {
+    "link-expired":
+      "That link has already been used or has expired. Enter your email below and ask for a new one.",
+    "auth-failed": "Sign-in did not complete. Try again.",
+  };
+
+  const message = error
+    ? (ERROR_MESSAGES[error] ?? "Sign-in did not complete. Try again.")
+    : null;
 
   return (
     <div className="login-grid" style={{ minHeight: "100vh", background: "var(--color-bg)" }}>
@@ -134,7 +147,7 @@ export default async function LoginPage({
       </div>
 
       <div className="grid place-items-center" style={{ padding: 40 }}>
-        <LoginForm initialError={error ?? null} />
+        <LoginForm initialError={message} />
       </div>
     </div>
   );
