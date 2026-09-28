@@ -12,13 +12,23 @@
 with
 -- ── Tables ──────────────────────────────────────────────────────────────────
 expected_tables(name) as (
-  values ('profiles'), ('suppliers'), ('supplier_contacts'),
-         ('supplier_certificates'), ('reports'), ('report_members'),
-         ('report_sections'), ('report_observations'),
-         ('report_target_products'), ('report_product_rows'),
-         ('report_images'), ('report_files'), ('report_transcripts'),
-         ('report_transcript_findings'), ('report_templates'),
-         ('template_placeholders'), ('report_activity')
+  values ('profiles'),
+         ('suppliers'),
+         ('supplier_contacts'),
+         ('supplier_certificates'),
+         ('supplier_files'),
+         ('reports'),
+         ('report_members'),
+         ('report_sections'),
+         ('report_observations'),
+         ('report_target_products'),
+         ('report_product_rows'),
+         ('report_images'),
+         ('report_files'),
+         ('report_ai_generations'),
+         ('report_exports'),
+         ('report_templates'),
+         ('template_placeholders')
 ),
 actual_tables as (
   select table_name::text as name

@@ -435,7 +435,7 @@ async function testSnapshotImmutability(supplier, reportId) {
   record("supplier detail shows the NEW master data", live?.employees === "99,999", live?.employees);
 
   // The explicit refresh is the only thing that may move it.
-  const { error: refreshError } = await admin.rpc("refresh_report_snapshot", { report_id: reportId });
+  const { error: refreshError } = await admin.rpc("refresh_report_snapshot", { p_report_id: reportId });
   const { data: refreshed } = await admin
     .from("reports")
     .select("company_information")
@@ -578,7 +578,8 @@ async function testChildRows(reportId) {
     report_id: reportId,
     category,
     priority: "Normal",
-    body: `Validation observation for ${category}.`,
+    // The column is `text`, not `body` — 0001 names it after what it holds.
+    text: `Validation observation for ${category}.`,
     sort_order: index,
   }));
 
