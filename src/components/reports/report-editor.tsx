@@ -18,6 +18,7 @@ import {
   type SectionDraftValue,
 } from "@/components/reports/section-draft";
 import { EditorRail, type RailPanel } from "@/components/reports/sources-rail";
+import type { TranscriptSource } from "@/lib/data/transcript-actions";
 import { SectionNavigator } from "@/components/reports/section-navigator";
 import { useToast } from "@/components/ui/toast";
 import {
@@ -64,6 +65,7 @@ export function ReportEditor({
   report,
   sections,
   photos,
+  transcripts,
   activeSection,
   children,
 }: {
@@ -71,6 +73,8 @@ export function ReportEditor({
   /** The stored rows, carrying the `version` each autosave patches against. */
   sections: readonly SectionRecord[];
   photos: readonly ReportPhoto[];
+  /** Sources the rail lists and the assistant analyses (README §11). */
+  transcripts: readonly TranscriptSource[];
   activeSection: SectionId;
   children: ReactNode;
 }) {
@@ -88,6 +92,7 @@ export function ReportEditor({
       report={report}
       record={sections.find((section) => section.sectionId === activeSection)}
       photos={photos}
+      transcripts={transcripts}
       activeSection={activeSection}
       railPanel={railPanel}
       onToggleRail={toggleRail}
@@ -114,6 +119,7 @@ function SectionEditor({
   report,
   record,
   photos,
+  transcripts,
   activeSection,
   railPanel,
   onToggleRail,
@@ -123,6 +129,7 @@ function SectionEditor({
   report: Report;
   record: SectionRecord | undefined;
   photos: readonly ReportPhoto[];
+  transcripts: readonly TranscriptSource[];
   activeSection: SectionId;
   railPanel: RailPanel | null;
   onToggleRail: (panel: RailPanel) => void;
@@ -444,7 +451,13 @@ function SectionEditor({
         </div>
 
         {railPanel ? (
-          <EditorRail panel={railPanel} onClose={onCloseRail} />
+          <EditorRail
+            panel={railPanel}
+            onClose={onCloseRail}
+            reportId={report.id}
+            transcripts={transcripts}
+            observations={report.sections.observations}
+          />
         ) : null}
       </div>
 

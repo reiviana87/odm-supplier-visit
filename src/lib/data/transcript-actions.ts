@@ -19,13 +19,9 @@ import { revalidatePath } from "next/cache";
 import { canEdit } from "@/lib/auth/roles";
 import { requireUser } from "@/lib/auth/session";
 import { fail, ok, toDataError, type DataResult } from "@/lib/data/errors";
+import { MAX_TRANSCRIPT_CHARS } from "@/lib/data/upload-limits";
 import { isMockMode } from "@/lib/supabase/env";
 import { getServerSupabase } from "@/lib/supabase/server";
-
-/** Roughly 200 pages of transcript. Beyond this the assistant refuses anyway. */
-export const MAX_TRANSCRIPT_CHARS = 400_000;
-
-export const ACCEPTED_TRANSCRIPT_TYPES = [".txt", ".md"] as const;
 
 export interface TranscriptSource {
   id: string;

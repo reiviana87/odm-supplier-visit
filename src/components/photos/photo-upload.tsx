@@ -17,7 +17,8 @@ import { useCallback, useId, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
-import { uploadReportPhoto, MAX_UPLOAD_BYTES } from "@/lib/data/photo-actions";
+import { uploadReportPhoto } from "@/lib/data/photo-actions";
+import { MAX_UPLOAD_BYTES } from "@/lib/data/upload-limits";
 import { cn } from "@/lib/utils/cn";
 import type { ImageRegion } from "@/types/domain";
 

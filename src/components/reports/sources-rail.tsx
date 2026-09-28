@@ -2,8 +2,9 @@
 
 import { Blueprint } from "@/components/ui/blueprint";
 import { Button, IconButton } from "@/components/ui/button";
-import { Icon } from "@/components/ui/icon";
-import { TRANSCRIPT_META } from "@/lib/mock-data";
+import { TranscriptPanel } from "@/components/reports/transcript-panel";
+import type { TranscriptSource } from "@/lib/data/transcript-actions";
+import type { Observation } from "@/types/domain";
 
 /**
  * The editor rail — README §2 ("Editor rail"), §6.1 ("Right — rail"), §20.
@@ -24,9 +25,16 @@ export type RailPanel = "sources" | "assistant";
 export function EditorRail({
   panel,
   onClose,
+  reportId,
+  transcripts,
+  observations,
 }: {
   panel: RailPanel;
   onClose?: () => void;
+  reportId: string;
+  transcripts: readonly TranscriptSource[];
+  /** §6's list, so a finding added from here appends to it. */
+  observations: readonly Observation[];
 }) {
   return (
     <aside
@@ -48,93 +56,16 @@ export function EditorRail({
         <IconButton label="Close panel" name="x" size={24} onClick={onClose} />
       </div>
 
-      {panel === "sources" ? <SourcesPanel /> : <AssistantPanel />}
+      {panel === "sources" ? (
+        <TranscriptPanel
+          reportId={reportId}
+          transcripts={transcripts}
+          observations={observations}
+        />
+      ) : (
+        <AssistantPanel />
+      )}
     </aside>
-  );
-}
-
-function SourcesPanel() {
-  return (
-    <div className="flex flex-col" style={{ gap: 10 }}>
-      <div className="grid grid-cols-2" style={{ gap: 6 }}>
-        <Button variant="secondary" icon="download" size="compact">
-          Plaud Transcript
-        </Button>
-        <Button variant="secondary" icon="mic" size="compact">
-          Audio
-        </Button>
-        <Button variant="secondary" icon="note" size="compact">
-          Notes
-        </Button>
-        <Button variant="secondary" icon="file" size="compact">
-          Documents
-        </Button>
-      </div>
-
-      <Blueprint style={{ padding: "10px 11px" }}>
-        <div className="flex items-start" style={{ gap: 8 }}>
-          <Icon name="download" size={13} style={{ marginTop: 3, flex: "none" }} />
-          <div className="min-w-0 flex-1">
-            <div style={{ fontSize: 12.5, wordBreak: "break-word" }}>
-              {TRANSCRIPT_META.fileName}
-            </div>
-            <div style={{ fontSize: 11, color: "var(--color-neutral-600)" }}>
-              Plaud Transcript · {TRANSCRIPT_META.words.toLocaleString("en-US")} words ·{" "}
-              {TRANSCRIPT_META.uploadedLabel}
-            </div>
-          </div>
-        </div>
-        <div className="mt-2 flex" style={{ gap: 4 }}>
-          <Button variant="primary" size="compact" className="flex-1">
-            Analyze
-          </Button>
-          <Button variant="secondary" size="compact">
-            Preview
-          </Button>
-          <IconButton label="Remove transcript" name="trash" size={26} />
-        </div>
-      </Blueprint>
-
-      <SourceRow
-        icon="note"
-        title="Field notes — 12 Aug.md"
-        subtitle="Notes · 7 entries · captured in Visit Mode"
-      />
-      <SourceRow
-        icon="file"
-        title="Huatong_Company_Presentation_EN.pdf"
-        subtitle="Document · 42 pages · 18.4 MB"
-      />
-      <SourceRow
-        icon="factory"
-        title="Supplier record — HEBEI HUATONG"
-        subtitle="Snapshot taken Aug 12, 2026"
-      />
-    </div>
-  );
-}
-
-function SourceRow({
-  icon,
-  title,
-  subtitle,
-}: {
-  icon: "note" | "file" | "factory";
-  title: string;
-  subtitle: string;
-}) {
-  return (
-    <Blueprint style={{ padding: "10px 11px" }}>
-      <div className="flex items-start" style={{ gap: 8 }}>
-        <Icon name={icon} size={13} style={{ marginTop: 3, flex: "none" }} />
-        <div className="min-w-0 flex-1">
-          <div style={{ fontSize: 12.5, wordBreak: "break-word" }}>{title}</div>
-          <div style={{ fontSize: 11, color: "var(--color-neutral-600)" }}>
-            {subtitle}
-          </div>
-        </div>
-      </div>
-    </Blueprint>
   );
 }
 

@@ -7,6 +7,7 @@ import { PageHeader, PageShell } from "@/components/ui/page-header";
 import { EmptyState } from "@/components/ui/states";
 import { getReport } from "@/lib/data/reports";
 import { getSupplierCertificates } from "@/lib/data/suppliers";
+import { listTranscripts } from "@/lib/data/transcript-actions";
 import { REPORT_PHOTOS } from "@/lib/mock-data";
 import { isSectionId } from "@/types/domain";
 
@@ -71,6 +72,9 @@ export default async function ReportSectionPage({ params }: EditorPageProps) {
 
   const { report, sections } = result.data;
 
+  // The rail lists these on every section, so they are read once here.
+  const transcripts = await listTranscripts(id);
+
   // Only §7 draws them, so nothing else pays for the query.
   const certificates =
     section === "certificates"
@@ -82,6 +86,7 @@ export default async function ReportSectionPage({ params }: EditorPageProps) {
       report={report}
       sections={sections}
       photos={REPORT_PHOTOS}
+      transcripts={transcripts.ok ? transcripts.data : []}
       activeSection={section}
     >
       {renderSection(

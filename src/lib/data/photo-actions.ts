@@ -29,6 +29,11 @@ import {
   type DataError,
   type DataResult,
 } from "@/lib/data/errors";
+import {
+  ACCEPTED_IMAGE_MIME,
+  MAX_UPLOAD_BYTES,
+  type AcceptedImageMime,
+} from "@/lib/data/upload-limits";
 import { isMockMode } from "@/lib/supabase/env";
 import { getServerSupabase } from "@/lib/supabase/server";
 import type { Database } from "@/types/database";
@@ -38,22 +43,6 @@ const BUCKET = "report-images";
 
 const DEMO_READ_ONLY =
   "Demo data is read-only — connect a Supabase project to save changes.";
-
-/** README §29 — one photograph, not a photo library. */
-export const MAX_UPLOAD_BYTES = 15 * 1024 * 1024;
-
-/**
- * What the browser may send. HEIC is absent on purpose: Safari hands over
- * `image/heic` that neither the exporter nor most Word installations can read,
- * so `photo-upload.tsx` converts it to JPEG in the browser before it gets here.
- * If that conversion fails the file is refused with a sentence saying so,
- * rather than stored as something that will break the export weeks later.
- */
-export const ACCEPTED_MIME = [
-  "image/jpeg",
-  "image/png",
-  "image/webp",
-] as const;
 
 /**
  * The guard every write shares: signed in, allowed, not demo, connected.
@@ -111,7 +100,7 @@ export async function uploadReportPhoto(
   const s = await session();
   if (!s.ok) return { ok: false, error: s.error };
 
-  if (!ACCEPTED_MIME.includes(input.mimeType as (typeof ACCEPTED_MIME)[number])) {
+  if (!ACCEPTED_IMAGE_MIME.includes(input.mimeType as AcceptedImageMime)) {
     return fail(
       "invalid",
       `${input.mimeType || "That file"} cannot be placed in a Word report. Use JPEG, PNG or WebP.`,
