@@ -26,6 +26,7 @@ import {
   type AutosaveSaveContext,
 } from "@/lib/autosave/use-autosave";
 import { getSectionRecord, saveSection, setReportStatus } from "@/lib/data/report-actions";
+import { exportReportDocx } from "@/lib/export/export-actions";
 import { sectionBodyOf } from "@/lib/data/report-mappers";
 import { reportCompletion, sectionCompletion } from "@/lib/reports/completion";
 import {
@@ -138,6 +139,7 @@ function SectionEditor({
   const [conflictOpen, setConflictOpen] = useState(false);
   const [resolving, setResolving] = useState<Resolution | undefined>(undefined);
   const [submitting, startSubmit] = useTransition();
+  const [exporting, startExport] = useTransition();
 
   /**
    * Phase 2 §18 — the version the next patch is built on. It is seeded from the
@@ -351,6 +353,45 @@ function SectionEditor({
     });
   }, [report.id, router, toast]);
 
+  /**
+   * README §24 — build the document, then hand it to the browser.
+   *
+   * The bytes come back base64 because a Buffer does not survive the server
+   * action boundary. An object URL is used rather than a data: URL so Word gets
+   * a real filename, and it is revoked as soon as the click has happened.
+   */
+  const exportDocx = useCallback(() => {
+    startExport(async () => {
+      const result = await exportReportDocx(report.id);
+      if (!result.ok) {
+        toast(result.error.message, "error");
+        return;
+      }
+
+      const { fileName, content, skipped } = result.data;
+      const bytes = Uint8Array.from(atob(content), (character) => character.charCodeAt(0));
+      const blob = new Blob([bytes], {
+        type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      });
+
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = fileName;
+      link.click();
+      URL.revokeObjectURL(url);
+
+      toast(
+        skipped.length === 0
+          ? `${fileName} downloaded.`
+          : `${fileName} downloaded — ${skipped.length} photograph${
+              skipped.length === 1 ? "" : "s"
+            } could not be read and ${skipped.length === 1 ? "is" : "are"} missing from it.`,
+        skipped.length === 0 ? undefined : "warning",
+      );
+    });
+  }, [report.id, toast]);
+
   return (
     <div>
       <EditorHeader
@@ -360,10 +401,13 @@ function SectionEditor({
         onSaveNow={saveNow}
         onRetrySave={retry}
         onReviewConflict={() => setConflictOpen(true)}
-        onPreview={() => toast("Document preview arrives with the DOCX export (Phase 5)")}
+        onPreview={() =>
+          toast("Export the Word file to see the document — an in-app preview is not built yet.")
+        }
         onToggleSources={() => onToggleRail("sources")}
         onToggleAssistant={() => onToggleRail("assistant")}
-        onExport={() => toast("Word export arrives in Phase 5")}
+        onExport={exportDocx}
+        exporting={exporting}
         onMoreActions={() =>
           toast(
             "Archive a report from the reports list; duplicating one is not built yet.",

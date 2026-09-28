@@ -35,6 +35,7 @@ export function EditorHeader({
   onToggleSources,
   onToggleAssistant,
   onExport,
+  exporting = false,
   onMoreActions,
 }: {
   report: Report;
@@ -48,6 +49,8 @@ export function EditorHeader({
   onToggleSources?: () => void;
   onToggleAssistant?: () => void;
   onExport?: () => void;
+  /** README §24 — the export runs on the server; the button says so meanwhile. */
+  exporting?: boolean;
   onMoreActions?: () => void;
 }) {
   const section = SECTIONS.find((s) => s.id === activeSection) ?? SECTIONS[0];
@@ -133,8 +136,14 @@ export function EditorHeader({
           >
             AI Assistant
           </Button>
-          <Button variant="primary" icon="download" size="toolbar" onClick={onExport}>
-            Export Word
+          <Button
+            variant="primary"
+            icon="download"
+            size="toolbar"
+            onClick={onExport}
+            disabled={exporting}
+          >
+            {exporting ? "Generating…" : "Export Word"}
           </Button>
           <IconButton
             label="More actions"
