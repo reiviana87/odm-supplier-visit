@@ -1,7 +1,7 @@
 "use client";
 
 import { Blueprint } from "@/components/ui/blueprint";
-import { Button, IconButton } from "@/components/ui/button";
+import { IconButton } from "@/components/ui/button";
 import { TranscriptPanel } from "@/components/reports/transcript-panel";
 import type { TranscriptSource } from "@/lib/data/transcript-actions";
 import type { Observation } from "@/types/domain";
