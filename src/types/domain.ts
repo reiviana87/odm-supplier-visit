@@ -391,6 +391,12 @@ export interface ReportPhoto {
   region: ImageRegion;
   sortOrder: number;
   capturedAt: string | null;
+  /**
+   * Natural pixel size, measured in the browser at upload (0006). Null when
+   * unknown — the DOCX exporter then assumes 4:3 rather than refusing.
+   */
+  width: number | null;
+  height: number | null;
   uploadState: PhotoUploadState;
 }
 

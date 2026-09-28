@@ -419,6 +419,8 @@ export async function listReportPhotos(
       region: row.region,
       sortOrder: row.sort_order,
       capturedAt: row.captured_at,
+      width: row.width,
+      height: row.height,
     })),
   );
 }

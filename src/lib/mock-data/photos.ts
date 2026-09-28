@@ -128,6 +128,9 @@ function buildPhotoSet(spec: PhotoSetSpec): ReportPhoto[] {
       sortOrder: spec.startOrder + i,
       capturedAt: capturedAtFor(entry.index),
       uploadState: "ready",
+      // The placeholders are 4:3, which is what the appendix assumes anyway.
+      width: 1600,
+      height: 1200,
     };
   });
 }
