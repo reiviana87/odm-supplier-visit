@@ -102,10 +102,24 @@ if (!user) fatal("the user could not be created or found.");
 
 // handle_new_user() writes the profile on signup. An invited user who has not
 // accepted yet may not have one, so the row is upserted rather than updated.
+// A name matters more than it looks: the New Report form offers exactly one
+// Employee - the signed-in user - so a profile with an empty name renders an
+// unselectable blank and no report can be created. An invited user has no
+// metadata to take one from, so the local part of the address stands in until
+// they set a real one in Settings.
+const existingName = (
+  await supabase.from("profiles").select("full_name").eq("id", user.id).maybeSingle()
+).data?.full_name;
+
+const fullName =
+  existingName?.trim() ||
+  String(user.user_metadata?.full_name ?? "").trim() ||
+  email.split("@")[0];
+
 const { error: profileError } = await supabase
   .from("profiles")
   .upsert(
-    { id: user.id, email, role: "admin" },
+    { id: user.id, email, full_name: fullName, role: "admin" },
     { onConflict: "id" },
   );
 
@@ -119,5 +133,5 @@ const { data: check } = await supabase
   .eq("id", user.id)
   .single();
 
-console.log(`  · profile role is now "${check?.role}"`);
+console.log(`  · profile role is now "${check?.role}", name "${check?.full_name}"`);
 console.log(`\n  done. ${email} can administer this project once they sign in.\n`);

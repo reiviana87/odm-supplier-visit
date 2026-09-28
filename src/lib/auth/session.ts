@@ -32,27 +32,59 @@ function toRole(value: unknown): UserRole {
 }
 
 /** Read a string out of the identity-provider metadata without widening to `any`. */
-function metadataString(user: User, key: string): string | null {
+function metadataString(user: ProfileSource, key: string): string | null {
   const metadata = user.user_metadata as Record<string, unknown> | undefined;
   const raw = metadata?.[key];
   return typeof raw === "string" && raw.trim().length > 0 ? raw.trim() : null;
 }
 
-function toProfile(user: User, row: Tables<"profiles"> | null): Profile {
-  const email = row?.email ?? user.email ?? "";
+/**
+ * A stored value, or null when there is nothing usable in it.
+ *
+ * `profiles.full_name` and `.email` are `not null default ''`, so an empty
+ * column arrives as `""` — a value `??` happily accepts, skipping every
+ * fallback behind it. An invited user therefore ended up with no name at all,
+ * and the New Report form, whose Employee control offers exactly one option,
+ * rendered that emptiness as an unselectable blank.
+ */
+function present(value: string | null | undefined): string | null {
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
+}
+
+/**
+ * What building a profile actually needs from the auth user. Narrower than
+ * `User` on purpose: it makes the function pure enough to test without
+ * constructing a whole Supabase session.
+ */
+export interface ProfileSource {
+  id: string;
+  email?: string | null;
+  user_metadata?: Record<string, unknown> | null;
+}
+
+/** The stored row, as far as this function cares. */
+export type ProfileRow = Pick<
+  Tables<"profiles">,
+  "id" | "email" | "full_name" | "job_title" | "initials" | "role"
+>;
+
+export function profileFromRow(user: ProfileSource, row: ProfileRow | null): Profile {
+  const email = present(row?.email) ?? present(user.email) ?? "";
   const fullName =
-    row?.full_name ??
+    present(row?.full_name) ??
     metadataString(user, "full_name") ??
     metadataString(user, "name") ??
-    email.split("@")[0];
+    // Last resort, and still a name a human recognises: the part before the @.
+    present(email.split("@")[0]) ??
+    "Unnamed user";
 
   return {
     id: user.id,
     fullName,
     email,
-    jobTitle: row?.job_title ?? metadataString(user, "job_title") ?? "",
+    jobTitle: present(row?.job_title) ?? metadataString(user, "job_title") ?? "",
     role: toRole(row?.role),
-    initials: row?.initials ?? initialsFrom(fullName, email),
+    initials: present(row?.initials) ?? initialsFrom(fullName, email),
   };
 }
 
@@ -72,7 +104,7 @@ export async function getCurrentUser(): Promise<Profile | null> {
     .eq("id", data.user.id)
     .maybeSingle();
 
-  return toProfile(data.user, row);
+  return profileFromRow(data.user, row);
 }
 
 /**
