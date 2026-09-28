@@ -1,14 +1,21 @@
 "use client";
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useMemo, useState, type JSX } from "react";
+import { useCallback, useMemo, useRef, useState, useTransition, type JSX } from "react";
 
 import { Blueprint } from "@/components/ui/blueprint";
-import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import { EmptyState, EMPTY_STATE_COPY } from "@/components/ui/states";
 import { Tabs } from "@/components/ui/tabs";
 import { useToast } from "@/components/ui/toast";
+import { PhotoUpload } from "@/components/photos/photo-upload";
+import { generatePhotoCaption } from "@/lib/ai/actions";
+import {
+  deletePhoto,
+  movePhotoToRegion,
+  reorderPhotos,
+  updatePhotoCaption,
+} from "@/lib/data/photo-actions";
 import type {
   CaptionSource,
   ImageRegion,
@@ -39,16 +46,11 @@ import { PhotoToolbar } from "./photo-toolbar";
 
 /** Where each control lands, so no button is dead and none fakes a result. */
 const PHASE = {
-  upload: "Photo upload arrives in Phase 3",
-  replace: "Replacing a photo arrives with the upload pipeline in Phase 3",
-  retry: "Upload retry arrives with the upload pipeline in Phase 3",
-  download: "Downloading the original arrives in Phase 3",
-  caption: "AI captioning arrives in Phase 4",
-  analyze: "Image analysis arrives in Phase 4",
-  arrange: "Automatic arrangement arrives in Phase 3",
-  reorder: "Drag to reorder arrives in Phase 3",
-  move: "Moving photos between sections arrives in Phase 3",
-  delete: "Deleting a photo arrives with the photo manager",
+  replace: "Replacing a photo in place is not built — delete it and upload the new one.",
+  retry: "Upload retry is not built — upload the photograph again.",
+  download: "Downloading the original is not built yet.",
+  analyze: "Standalone image analysis is not built — generate a caption instead.",
+  arrange: "Automatic arrangement is not built — drag the cards into order.",
 } as const;
 
 /** The locally edited fields of a caption. Everything else stays as seeded. */
@@ -80,6 +82,9 @@ export function PhotoSection({
   photos,
 }: PhotoSectionProps): JSX.Element {
   const { toast } = useToast();
+  const router = useRouter();
+  const [, startAction] = useTransition();
+  const uploadRef = useRef<HTMLButtonElement>(null);
 
   const [edits, setEdits] = useState<Record<string, CaptionEdit>>({});
   const [selected, setSelected] = useState<ReadonlySet<string>>(NO_SELECTION);
@@ -90,8 +95,7 @@ export function PhotoSection({
    * than in component state. That makes it linkable, back-button-able and the
    * target the dashboard and the export warnings can point at.
    */
-  const router = useRouter();
-  const pathname = usePathname();
+    const pathname = usePathname();
   const searchParams = useSearchParams();
   const view: AppendixView =
     searchParams.get("view") === "layout" ? "layout" : "photos";
@@ -156,6 +160,19 @@ export function PhotoSection({
     }));
   }, []);
 
+  /** Persist whatever is in the card's caption field. */
+  const handleCommitCaption = useCallback(
+    async (id: string, caption: string) => {
+      const result = await updatePhotoCaption(id, caption);
+      if (!result.ok) {
+        toast(result.error.message, "error");
+        return;
+      }
+      router.refresh();
+    },
+    [router, toast],
+  );
+
   const handleAcceptCaption = useCallback(
     (id: string) => {
       const photo = source.find((candidate) => candidate.id === id);
@@ -168,16 +185,148 @@ export function PhotoSection({
           captionState: "accepted",
         },
       }));
-      toast("Caption accepted");
+      // The proposal only becomes the caption once it is written; until then
+      // the card is showing an optimistic edit, not a saved one (§16).
+      void handleCommitCaption(id, photo.aiCaption);
     },
-    [source, toast],
+    [handleCommitCaption, source],
   );
 
+  /**
+   * The per-card overflow actions. `rewrite` is the AI caption; the rest are
+   * either real writes or honestly unbuilt.
+   */
   const handleCardAction = useCallback(
-    (action: PhotoCardAction) => {
-      toast(PHASE[action === "rewrite" ? "caption" : action]);
+    (action: PhotoCardAction, photo?: ReportPhoto) => {
+      const id = photo?.id;
+      if (!id) {
+        toast(PHASE[action as keyof typeof PHASE] ?? "That action is not built yet.");
+        return;
+      }
+
+      if (action === "rewrite") {
+        startAction(async () => {
+          const result = await generatePhotoCaption({ reportId: report.id, photoId: id });
+          if (!result.ok) {
+            toast(result.error.message, "error");
+            return;
+          }
+          toast(
+            result.data.confidence < 85
+              ? `Caption proposed at ${result.data.confidence}% — review it before accepting.`
+              : "Caption proposed — accept, edit or discard it.",
+            result.data.confidence < 85 ? "warning" : undefined,
+          );
+          router.refresh();
+        });
+        return;
+      }
+
+      if (action === "delete") {
+        startAction(async () => {
+          const result = await deletePhoto(id);
+          if (!result.ok) {
+            toast(result.error.message, "error");
+            return;
+          }
+          toast("Photograph deleted.");
+          router.refresh();
+        });
+        return;
+      }
+
+      toast(PHASE[action as keyof typeof PHASE] ?? "That action is not built yet.");
     },
-    [toast],
+    [report.id, router, toast],
+  );
+
+  /** README §8 — move the selected cards to another region. */
+  const handleMoveSelected = useCallback(
+    (target: ImageRegion) => {
+      const ids = [...selected];
+      if (ids.length === 0) return;
+
+      startAction(async () => {
+        const failures: string[] = [];
+        for (const id of ids) {
+          const result = await movePhotoToRegion(id, target);
+          if (!result.ok) failures.push(result.error.message);
+        }
+        setSelected(NO_SELECTION);
+        if (failures.length > 0) {
+          toast(failures[0], "error");
+          return;
+        }
+        toast(`${ids.length} photograph${ids.length === 1 ? "" : "s"} moved.`);
+        router.refresh();
+      });
+    },
+    [router, selected, toast],
+  );
+
+  const handleDeleteSelected = useCallback(() => {
+    const ids = [...selected];
+    if (ids.length === 0) return;
+
+    startAction(async () => {
+      const failures: string[] = [];
+      for (const id of ids) {
+        const result = await deletePhoto(id);
+        if (!result.ok) failures.push(result.error.message);
+      }
+      setSelected(NO_SELECTION);
+      if (failures.length > 0) {
+        toast(failures[0], "error");
+        return;
+      }
+      toast(`${ids.length} photograph${ids.length === 1 ? "" : "s"} deleted.`);
+      router.refresh();
+    });
+  }, [router, selected, toast]);
+
+  /**
+   * §16 — bulk captioning is a loop over the single-photo call rather than a
+   * separate batch endpoint: one prompt per image is what the vision API takes,
+   * and doing them one at a time keeps a partial run useful.
+   */
+  const handleGenerateAllCaptions = useCallback(() => {
+    const targets = items.filter((photo) => !photo.caption.trim());
+    if (targets.length === 0) {
+      toast("Every photograph in this section already has a caption.");
+      return;
+    }
+
+    startAction(async () => {
+      let done = 0;
+      let firstError: string | null = null;
+
+      for (const photo of targets) {
+        const result = await generatePhotoCaption({ reportId: report.id, photoId: photo.id });
+        if (result.ok) done += 1;
+        else if (!firstError) firstError = result.error.message;
+      }
+
+      if (done > 0) {
+        toast(`${done} caption${done === 1 ? "" : "s"} proposed — review before accepting.`);
+        router.refresh();
+      }
+      if (firstError) toast(firstError, "error");
+    });
+  }, [items, report.id, router, toast]);
+
+  /** README §9 — persist a drag-to-reorder as the whole region's new order. */
+  const handleReorder = useCallback(
+    (orderedIds: readonly string[]) => {
+      startAction(async () => {
+        const result = await reorderPhotos(report.id, region, orderedIds);
+        if (!result.ok) {
+          toast(result.error.message, "error");
+          return;
+        }
+        router.refresh();
+      });
+    },
+    [region, report.id, router, toast],
   );
 
   const toggleSelectAll = useCallback(() => {
@@ -189,24 +338,66 @@ export function PhotoSection({
   }, [source]);
 
   const uploadButton = (
-    <Button icon="upload" onClick={() => toast(PHASE.upload)}>
-      Upload Images
-    </Button>
+    <PhotoUpload reportId={report.id} region={region} onUploaded={() => router.refresh()} />
   );
+
+  /**
+   * README §9 — drag to reorder, with the native API rather than a library.
+   *
+   * The cards are a flat list, so a reorder is an index move; a drag library
+   * would add a dependency for animation this screen does not ask for. The
+   * dragged id lives in a ref because `dataTransfer` is unreadable during
+   * `dragover`, which is exactly when the drop target has to decide.
+   */
+  const draggingId = useRef<string | null>(null);
+
+  const dropOn = useCallback(
+    (targetId: string) => {
+      const sourceId = draggingId.current;
+      draggingId.current = null;
+      if (!sourceId || sourceId === targetId) return;
+
+      const ids = items.map((photo) => photo.id);
+      const from = ids.indexOf(sourceId);
+      const to = ids.indexOf(targetId);
+      if (from === -1 || to === -1) return;
+
+      ids.splice(to, 0, ids.splice(from, 1)[0]);
+      handleReorder(ids);
+    },
+    [handleReorder, items],
+  );
+
+  const reorderable = region === "APPENDIX_IMAGES";
 
   const grid = (
     <PhotoGrid>
       {items.map((photo, index) => (
-        <PhotoCard
+        <div
           key={photo.id}
-          photo={photo}
-          index={index + 1}
-          showDragHandle={region === "APPENDIX_IMAGES"}
-          selected={selected.has(photo.id)}
-          onCaptionChange={handleCaptionChange}
-          onAcceptCaption={handleAcceptCaption}
-          onAction={handleCardAction}
-        />
+          draggable={reorderable}
+          onDragStart={() => {
+            draggingId.current = photo.id;
+          }}
+          onDragOver={(event) => {
+            if (reorderable) event.preventDefault();
+          }}
+          onDrop={(event) => {
+            event.preventDefault();
+            dropOn(photo.id);
+          }}
+          style={{ cursor: reorderable ? "grab" : undefined }}
+        >
+          <PhotoCard
+            photo={photo}
+            index={index + 1}
+            showDragHandle={reorderable}
+            selected={selected.has(photo.id)}
+            onCaptionChange={handleCaptionChange}
+            onAcceptCaption={handleAcceptCaption}
+            onAction={handleCardAction}
+          />
+        </div>
       ))}
       {region === "APPENDIX_IMAGES" ? null : (
         /* Prototype lines 1004..1013 — the dashed drop tile closing the grid. */
@@ -234,15 +425,15 @@ export function PhotoSection({
                 marginTop: 2,
               }}
             >
-              JPG / HEIC from iPhone · up to 40 at a time
+              JPEG, PNG or WebP · several at a time
             </div>
-            <Button
-              size="compact"
-              onClick={() => toast(PHASE.upload)}
-              style={{ marginTop: 9 }}
-            >
-              Upload Images
-            </Button>
+            <div style={{ marginTop: 9 }}>
+              <PhotoUpload
+                reportId={report.id}
+                region={region}
+                onUploaded={() => router.refresh()}
+              />
+            </div>
           </div>
         </Blueprint>
       )}
@@ -258,12 +449,16 @@ export function PhotoSection({
         awaitingReview={awaitingReview}
         selectedCount={selected.size}
         allSelected={selected.size > 0 && selected.size === items.length}
-        onUpload={() => toast(PHASE.upload)}
-        onGenerateAll={() => toast(PHASE.caption)}
+        onUpload={() => uploadRef.current?.click()}
+        onGenerateAll={handleGenerateAllCaptions}
         onToggleSelectAll={toggleSelectAll}
         onArrange={() => toast(PHASE.arrange)}
-        onMoveSelected={() => toast(PHASE.move)}
-        onDeleteSelected={() => toast(PHASE.delete)}
+        onMoveSelected={() =>
+          handleMoveSelected(
+            region === "APPENDIX_IMAGES" ? "MAIN_PRODUCT_IMAGES" : "APPENDIX_IMAGES",
+          )
+        }
+        onDeleteSelected={handleDeleteSelected}
       />
 
       {region === "APPENDIX_IMAGES" && items.length > 0 ? (
