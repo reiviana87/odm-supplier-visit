@@ -1,4 +1,4 @@
-import type { User } from "@supabase/supabase-js";
+
 import { redirect } from "next/navigation";
 
 import { CURRENT_USER } from "@/lib/mock-data";
