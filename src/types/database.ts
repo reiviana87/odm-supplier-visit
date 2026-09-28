@@ -878,6 +878,9 @@ export type Database = {
           storage_path: string | null;
           mime_type: string | null;
           size_bytes: number | null;
+          /** 0006 — natural pixel size, measured in the browser at upload. */
+          width: number | null;
+          height: number | null;
           caption: string;
           /** The AI proposal, held until the user accepts it (README §11). */
           ai_caption: string;
@@ -904,6 +907,8 @@ export type Database = {
           storage_path?: string | null;
           mime_type?: string | null;
           size_bytes?: number | null;
+          width?: number | null;
+          height?: number | null;
           caption?: string;
           ai_caption?: string;
           caption_source?: Database["public"]["Enums"]["caption_source"];
@@ -926,6 +931,8 @@ export type Database = {
           storage_path?: string | null;
           mime_type?: string | null;
           size_bytes?: number | null;
+          width?: number | null;
+          height?: number | null;
           caption?: string;
           ai_caption?: string;
           caption_source?: Database["public"]["Enums"]["caption_source"];
@@ -964,7 +971,10 @@ export type Database = {
           /** 'transcript' | 'audio' | 'note' | 'document' (CHECK). */
           kind: string;
           file_name: string;
-          storage_path: string;
+          /** 0006 — null when the source is pasted text with no file. */
+          storage_path: string | null;
+          /** 0006 — extracted plain text, for kind = 'transcript'. */
+          content: string;
           mime_type: string | null;
           size_bytes: number | null;
           /** Shown in the Sources rail; null when not applicable. */
@@ -979,7 +989,8 @@ export type Database = {
           report_id: string;
           kind?: string;
           file_name: string;
-          storage_path: string;
+          storage_path?: string | null;
+          content?: string;
           mime_type?: string | null;
           size_bytes?: number | null;
           word_count?: number | null;
@@ -993,7 +1004,8 @@ export type Database = {
           report_id?: string;
           kind?: string;
           file_name?: string;
-          storage_path?: string;
+          storage_path?: string | null;
+          content?: string;
           mime_type?: string | null;
           size_bytes?: number | null;
           word_count?: number | null;
