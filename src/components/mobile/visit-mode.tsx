@@ -8,6 +8,7 @@ import { Icon } from "@/components/ui/icon";
 import { CompletionIndicator } from "@/components/ui/progress";
 import { useToast } from "@/components/ui/toast";
 import { uploadReportPhoto } from "@/lib/data/photo-actions";
+import { prepareImage } from "@/lib/photos/prepare-image";
 import { saveObservations } from "@/lib/data/report-actions";
 import type { Observation, ReportStatus, SectionId } from "@/types/domain";
 
@@ -84,19 +85,17 @@ export interface VisitModeProps {
   observationPhoto: VisitPhoto;
 }
 
-/** Natural dimensions, or zeros when the browser cannot decode the file. */
-async function measureImage(file: File): Promise<{ width: number; height: number }> {
-  const url = URL.createObjectURL(file);
-  try {
-    const image = new Image();
-    return await new Promise<{ width: number; height: number }>((resolve) => {
-      image.onload = () => resolve({ width: image.naturalWidth, height: image.naturalHeight });
-      image.onerror = () => resolve({ width: 0, height: 0 });
-      image.src = url;
-    });
-  } finally {
-    URL.revokeObjectURL(url);
-  }
+/**
+ * What to say when the phone handed over something this browser cannot decode.
+ *
+ * On the phone itself this should not happen — iOS reads its own HEIC — so the
+ * sentence is written for the other case, a visit being written up afterwards
+ * on a desktop from photographs copied off the phone.
+ */
+function cannotRead(file: File): string {
+  return /heic|heif/i.test(file.type) || /\.(heic|heif)$/i.test(file.name)
+    ? `${file.name} could not be read here. Upload it from the iPhone itself, or set Settings › Camera › Formats › Most Compatible and share it again.`
+    : `${file.name} could not be read as an image.`;
 }
 
 export function VisitMode({
@@ -139,16 +138,25 @@ export function VisitMode({
       let firstError: string | null = null;
 
       for (const file of list) {
-        const size = await measureImage(file);
+        // Shrunk and converted before it leaves the phone: a photograph
+        // straight off an iPhone is larger than one upload request may carry,
+        // in a format Word cannot place, and on factory wifi every megabyte
+        // that does not have to be sent is a megabyte that cannot time out.
+        const prepared = await prepareImage(file);
+        if (!prepared) {
+          if (!firstError) firstError = cannotRead(file);
+          continue;
+        }
+
         const result = await uploadReportPhoto({
           reportId,
           region: "APPENDIX_IMAGES",
-          fileName: file.name,
-          mimeType: file.type || "image/jpeg",
-          width: size.width,
-          height: size.height,
+          fileName: prepared.file.name,
+          mimeType: prepared.file.type || "image/jpeg",
+          width: prepared.width,
+          height: prepared.height,
           capturedAt: file.lastModified ? new Date(file.lastModified).toISOString() : null,
-          file,
+          file: prepared.file,
         });
         if (result.ok) stored += 1;
         else if (!firstError) firstError = result.error.message;

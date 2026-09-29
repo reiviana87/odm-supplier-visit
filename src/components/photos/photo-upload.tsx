@@ -18,41 +18,23 @@ import { useCallback, useId, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import { uploadReportPhoto } from "@/lib/data/photo-actions";
-import { MAX_UPLOAD_BYTES } from "@/lib/data/upload-limits";
+import { prepareImage } from "@/lib/photos/prepare-image";
 import { cn } from "@/lib/utils/cn";
 import type { ImageRegion } from "@/types/domain";
 
-/** What the picker offers. HEIC is handled separately, below. */
-const ACCEPT = "image/jpeg,image/png,image/webp";
-
 /**
- * Safari hands over `image/heic` from an iPhone shooting in High Efficiency.
- * Word cannot place it and the exporter cannot size it, so it is refused here
- * with the one-line fix rather than stored as a photograph that will be missing
- * from the report weeks later. Converting it in the browser needs a ~1.5 MB
- * decoder for a case the phone can avoid in Settings, which is not a trade
- * worth making for this MVP.
+ * Everything the browser can decode, which on an iPhone includes the HEIC it
+ * shoots by default. `prepareImage` turns whatever is picked into a JPEG the
+ * appendix can place, so the picker no longer has to grey out the phone's own
+ * format and ask the user to go and change a camera setting.
  */
-function isHeic(file: File): boolean {
-  return (
-    /heic|heif/i.test(file.type) || /\.(heic|heif)$/i.test(file.name)
-  );
-}
+const ACCEPT = "image/*";
 
-/** Natural dimensions, or zeros when the browser cannot decode the file. */
-async function measure(file: File): Promise<{ width: number; height: number }> {
-  const url = URL.createObjectURL(file);
-  try {
-    const image = new Image();
-    const measured = await new Promise<{ width: number; height: number }>((resolve) => {
-      image.onload = () => resolve({ width: image.naturalWidth, height: image.naturalHeight });
-      image.onerror = () => resolve({ width: 0, height: 0 });
-      image.src = url;
-    });
-    return measured;
-  } finally {
-    URL.revokeObjectURL(url);
-  }
+/** The advice when a file cannot be decoded here at all — see `prepareImage`. */
+function cannotRead(file: File): string {
+  return /heic|heif/i.test(file.type) || /\.(heic|heif)$/i.test(file.name)
+    ? `${file.name} — this browser cannot read iPhone HEIC. Upload it from the phone itself, or set Settings › Camera › Formats › Most Compatible and share it again.`
+    : `${file.name} — the image could not be read.`;
 }
 
 export interface PhotoUploadProps {
@@ -92,49 +74,40 @@ export function PhotoUpload({
       const list = Array.from(files);
       if (list.length === 0) return;
 
-      const heic = list.filter(isHeic);
-      const usable = list.filter((file) => !isHeic(file));
-
-      if (heic.length > 0) {
-        toast(
-          `${heic.length} iPhone photo${heic.length === 1 ? "" : "s"} (HEIC) cannot go into a Word report. ` +
-            "On the iPhone: Settings › Camera › Formats › Most Compatible, then re-share them as JPEG.",
-          "warning",
-        );
-      }
-      if (usable.length === 0) return;
-
-      setProgress({ total: usable.length, done: 0, failed: [] });
+      setProgress({ total: list.length, done: 0, failed: [] });
       const failed: string[] = [];
 
       // Sequential on purpose: a phone on factory wifi uploading eight photos
       // at once tends to time all of them out rather than finish any.
-      for (const [index, file] of usable.entries()) {
-        if (file.size > MAX_UPLOAD_BYTES) {
-          failed.push(`${file.name} (too large)`);
-          setProgress({ total: usable.length, done: index + 1, failed });
+      for (const [index, file] of list.entries()) {
+        // Shrunk and converted here, in the browser, before anything is sent:
+        // a phone photograph is several times larger than one upload request
+        // may carry and many times more detailed than the page can print.
+        const prepared = await prepareImage(file);
+        if (!prepared) {
+          failed.push(cannotRead(file));
+          setProgress({ total: list.length, done: index + 1, failed });
           continue;
         }
 
-        const { width, height } = await measure(file);
         const result = await uploadReportPhoto({
           reportId,
           region,
-          fileName: file.name,
-          mimeType: file.type || "image/jpeg",
-          width,
-          height,
+          fileName: prepared.file.name,
+          mimeType: prepared.file.type || "image/jpeg",
+          width: prepared.width,
+          height: prepared.height,
           capturedAt: file.lastModified ? new Date(file.lastModified).toISOString() : null,
-          file,
+          file: prepared.file,
         });
 
         if (!result.ok) failed.push(`${file.name} — ${result.error.message}`);
-        setProgress({ total: usable.length, done: index + 1, failed });
+        setProgress({ total: list.length, done: index + 1, failed });
       }
 
       setProgress(null);
 
-      const uploaded = usable.length - failed.length;
+      const uploaded = list.length - failed.length;
       if (uploaded > 0) {
         toast(`${uploaded} photograph${uploaded === 1 ? "" : "s"} uploaded.`);
         onUploaded?.();
