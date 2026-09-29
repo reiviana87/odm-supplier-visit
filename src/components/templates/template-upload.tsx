@@ -52,7 +52,7 @@ function refusalFor(file: File): string | null {
     return `“${file.name}” arrived empty (0 bytes). Check that it is not still open or syncing, then choose it again.`;
   }
   if (file.size > MAX_TEMPLATE_BYTES) {
-    return `“${file.name}” is ${formatBytes(file.size)}. The limit is ${formatBytes(MAX_TEMPLATE_BYTES)} — a template this large is usually carrying photographs that belong in a report instead.`;
+    return `“${file.name}” is ${formatBytes(file.size)}. The limit is ${formatBytes(MAX_TEMPLATE_BYTES)} — a single upload request cannot carry more than that, so a bigger template has to be slimmed down before it can be stored.`;
   }
   return null;
 }

@@ -7,8 +7,32 @@
  * limit before spending a round trip on a file the server would refuse.
  */
 
-/** README §29 — one photograph, not a photo library. */
-export const MAX_UPLOAD_BYTES = 15 * 1024 * 1024;
+/**
+ * The ceiling every upload in this app shares.
+ *
+ * Every file here travels as an argument to a Server Action, and Next caps a
+ * Server Action request body at 1 MB unless `next.config.ts` says otherwise.
+ * It enforces that cap by THROWING `ApiError(413)` rather than returning — an
+ * exception, not a `DataResult` — so a file over the cap does not produce a
+ * message, it tears the page down into the route error boundary. That is what
+ * the 1.6 MB corporate template did.
+ *
+ * 4 MiB is as high as this can usefully go: Vercel refuses a function request
+ * body of about 4.5 MB before Next ever sees it, with its own
+ * `FUNCTION_PAYLOAD_TOO_LARGE`. Carrying files larger than this needs the
+ * browser to upload straight to Supabase Storage through a signed URL, not a
+ * bigger number here.
+ */
+export const SERVER_ACTION_BODY_LIMIT_BYTES = 4 * 1024 * 1024;
+
+/**
+ * README §29 — one photograph, not a photo library.
+ *
+ * Below {@link SERVER_ACTION_BODY_LIMIT_BYTES}, because the limit is measured
+ * on the whole request: the multipart boundaries, the part headers and the
+ * action's other arguments are counted alongside the image.
+ */
+export const MAX_UPLOAD_BYTES = 3.5 * 1024 * 1024;
 
 /**
  * What the photo upload accepts. HEIC is deliberately absent: Word cannot
