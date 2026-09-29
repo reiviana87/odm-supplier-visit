@@ -73,6 +73,9 @@ export function LoginForm({ initialError = null }: { initialError?: string | nul
 
       <div className="field" style={{ marginBottom: 12 }}>
         <label htmlFor="login-email">Work email</label>
+        {/* Empty on purpose. This field used to arrive holding one person's
+            address, which everybody else had to clear before they could sign
+            in; `autoComplete` offers each viewer their own. */}
         <input
           id="login-email"
           name="email"
@@ -80,7 +83,7 @@ export function LoginForm({ initialError = null }: { initialError?: string | nul
           className="input"
           autoComplete="username"
           required
-          defaultValue="alves.reinaldo@ebara.com"
+          placeholder="name@ebara.com"
           aria-invalid={error ? true : undefined}
           aria-describedby={error ? "login-error" : undefined}
         />
