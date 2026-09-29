@@ -375,7 +375,7 @@ function SectionEditor({
         return;
       }
 
-      const { fileName, content, skipped } = result.data;
+      const { fileName, content, skipped, templateNotice } = result.data;
       const bytes = Uint8Array.from(atob(content), (character) => character.charCodeAt(0));
       const blob = new Blob([bytes], {
         type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -388,13 +388,25 @@ function SectionEditor({
       link.click();
       URL.revokeObjectURL(url);
 
+      // Two different things can go quietly wrong in an export, and neither may
+      // be swallowed: photographs that could not be read, and a document that
+      // did not get the corporate letterhead. The second one is the dangerous
+      // one — the file opens, looks finished, and is branded like nothing else
+      // the company sends. Both are said in the same breath, because telling
+      // somebody half of what is wrong with a document is worse than silence.
+      const notes: string[] = [];
+      if (skipped.length > 0) {
+        notes.push(
+          `${skipped.length} photograph${skipped.length === 1 ? "" : "s"} could not be read and ${
+            skipped.length === 1 ? "is" : "are"
+          } missing from it.`,
+        );
+      }
+      if (templateNotice) notes.push(templateNotice);
+
       toast(
-        skipped.length === 0
-          ? `${fileName} downloaded.`
-          : `${fileName} downloaded — ${skipped.length} photograph${
-              skipped.length === 1 ? "" : "s"
-            } could not be read and ${skipped.length === 1 ? "is" : "are"} missing from it.`,
-        skipped.length === 0 ? undefined : "warning",
+        notes.length === 0 ? `${fileName} downloaded.` : `${fileName} downloaded. ${notes.join(" ")}`,
+        notes.length === 0 ? undefined : "warning",
       );
     });
   }, [report.id, toast]);
