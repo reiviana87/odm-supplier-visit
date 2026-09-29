@@ -110,8 +110,6 @@ export interface VisitModeProps {
   /** e.g. "Factory Visit · Aug 12 · 10:32". */
   visitLine: string;
   status: ReportStatus;
-  /** Offline-queue depth shown in the header banner. */
-  queuedItems: number;
   documentNumber: string;
   /** 0–100, derived from the section predicates. */
   completion: number;
@@ -154,7 +152,6 @@ export function VisitMode({
   supplierName,
   visitLine,
   status,
-  queuedItems,
   documentNumber,
   completion,
   sections,
@@ -468,12 +465,7 @@ export function VisitMode({
         }}
       />
 
-      <VisitHeader
-        supplierName={supplierName}
-        visitLine={visitLine}
-        status={status}
-        queuedItems={queuedItems}
-      />
+      <VisitHeader supplierName={supplierName} visitLine={visitLine} status={status} />
 
       {pending.length === 0 && screen === "home" ? (
         <QuickActionGrid

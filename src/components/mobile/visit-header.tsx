@@ -1,3 +1,7 @@
+"use client";
+
+import { useSyncExternalStore } from "react";
+
 import { ReportStatusBadge } from "@/components/ui/badge";
 import { Icon } from "@/components/ui/icon";
 import type { ReportStatus } from "@/types/domain";
@@ -17,24 +21,43 @@ import type { ReportStatus } from "@/types/domain";
  * 19px and describes the banner icon without a size. The prototype is the
  * measured truth on both counts: the name is 22px and the icon is 13px.
  *
- * Offline sync is not Phase 1. The banner is real UI and the queue count is
- * seeded — nothing is queued, watched or replayed behind it yet.
+ *
+ * The weak-signal banner used to be painted on every render, over a seeded
+ * queue depth, so the phone permanently announced a bad connection nobody had
+ * measured and six items waiting that did not exist. It appears when the
+ * browser says the device is offline, and says what that means for the work in
+ * hand. There is still no queue — which is exactly why the sentence promises
+ * none.
  */
+
+/** Subscribe to the browser's own online/offline events. */
+function subscribeToConnection(onChange: () => void): () => void {
+  window.addEventListener("online", onChange);
+  window.addEventListener("offline", onChange);
+  return () => {
+    window.removeEventListener("online", onChange);
+    window.removeEventListener("offline", onChange);
+  };
+}
+
+function useIsOffline(): boolean {
+  return useSyncExternalStore(
+    subscribeToConnection,
+    () => !navigator.onLine,
+    // The server cannot know, and guessing "offline" would flash a warning on
+    // every first paint.
+    () => false,
+  );
+}
 export interface VisitHeaderProps {
   supplierName: string;
   /** e.g. "Factory Visit · Aug 12 · 10:32". */
   visitLine: string;
   status: ReportStatus;
-  /** Seeded count shown in the weak-signal banner. */
-  queuedItems: number;
 }
 
-export function VisitHeader({
-  supplierName,
-  visitLine,
-  status,
-  queuedItems,
-}: VisitHeaderProps) {
+export function VisitHeader({ supplierName, visitLine, status }: VisitHeaderProps) {
+  const offline = useIsOffline();
   return (
     <header
       style={{
@@ -64,23 +87,26 @@ export function VisitHeader({
         <ReportStatusBadge status={status} />
       </div>
 
-      <p
-        role="status"
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 7,
-          margin: "9px 0 0",
-          fontSize: 11.5,
-          color: "var(--color-warning-ink)",
-          background: "var(--color-warning-bg)",
-          border: "1px solid var(--color-warning-border)",
-          padding: "5px 8px",
-        }}
-      >
-        <Icon name="wifi-off" size={13} style={{ flex: "none" }} />
-        Weak factory signal · {queuedItems} items queued
-      </p>
+      {offline ? (
+        <p
+          role="status"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 7,
+            margin: "9px 0 0",
+            fontSize: 11.5,
+            color: "var(--color-warning-ink)",
+            background: "var(--color-warning-bg)",
+            border: "1px solid var(--color-warning-border)",
+            padding: "5px 8px",
+          }}
+        >
+          <Icon name="wifi-off" size={13} style={{ flex: "none" }} />
+          No signal — nothing can be saved until it returns. Keep the photograph
+          on the phone and file it once the bars come back.
+        </p>
+      ) : null}
     </header>
   );
 }

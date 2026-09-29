@@ -110,13 +110,6 @@ function excerptFor(
 }
 
 /**
- * Offline sync is the one thing on this screen with no store behind it: the
- * weak-signal banner is real UI, this number is not, and nothing is replayed.
- * The three counters above it are all counted from the report now.
- */
-const QUEUED_ITEMS = 0;
-
-/**
  * The clock in the header line, when the report has no start time of its own.
  * The prototype's stamp (line 2191) — a report created on the phone has not
  * been through the General Information form yet.
@@ -187,7 +180,6 @@ export default async function VisitPage() {
         supplierName={visit.supplierShortName}
         visitLine={`Factory Visit · ${visitDay} · ${visit.startTime ?? VISIT_START_FALLBACK}`}
         status={visit.status}
-        queuedItems={QUEUED_ITEMS}
         documentNumber={visit.documentNumber}
         completion={reportCompletion(visit, photos)}
         sections={SECTIONS.map((section) => ({
