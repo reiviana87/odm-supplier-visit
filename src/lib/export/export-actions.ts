@@ -12,6 +12,13 @@
  * A base64 string crosses the server-action boundary because a Buffer does not.
  * That costs about a third in transfer size, which for a report-sized document
  * is worth far less than the complexity of a second signed-download round trip.
+ *
+ * Which generator runs is decided here. With an active corporate template the
+ * report is written into that template's own shell — letterhead, footer, styles
+ * and page geometry (`template-docx.ts`). Without one, or with one that cannot be
+ * opened, the built-in layout is produced instead (`docx.ts`) and the result says
+ * so: a document that is not on EBARA letterhead must not be handed over as
+ * though it were.
  */
 
 import { canEdit } from "@/lib/auth/roles";
@@ -19,10 +26,12 @@ import { requireUser } from "@/lib/auth/session";
 import { fail, ok, type DataResult } from "@/lib/data/errors";
 import { listReportPhotos } from "@/lib/data/photo-actions";
 import { getReport } from "@/lib/data/reports";
+import { getActiveTemplateBytes } from "@/lib/data/template-actions";
 import { buildReportDocx, exportFileName, type ExportImage } from "@/lib/export/docx";
+import { buildTemplateReportDocx } from "@/lib/export/template-docx";
 import { isMockMode } from "@/lib/supabase/env";
 import { getServerSupabase } from "@/lib/supabase/server";
-import type { ReportPhoto } from "@/types/domain";
+import type { Report, ReportPhoto } from "@/types/domain";
 
 export interface ExportedDocx {
   fileName: string;
@@ -31,6 +40,16 @@ export interface ExportedDocx {
   byteLength: number;
   /** Photographs that could not be read, named so the user knows what is absent. */
   skipped: string[];
+  /**
+   * True when the document was written into the active corporate template's
+   * shell, so it carries the EBARA letterhead and footer.
+   */
+  usedCorporateTemplate: boolean;
+  /**
+   * Why it was not, when it was not — one sentence, safe to render. Null when the
+   * corporate shell was applied.
+   */
+  templateNotice: string | null;
 }
 
 /** One photo's bytes are not worth failing an export over, but silence is. */
@@ -72,6 +91,69 @@ async function loadImages(
   return { images, skipped };
 }
 
+interface GeneratedDocument {
+  buffer: Buffer;
+  usedCorporateTemplate: boolean;
+  templateNotice: string | null;
+}
+
+const NO_TEMPLATE_NOTICE =
+  "No active Word template is set, so this document uses the built-in layout instead of the " +
+  "EBARA letterhead. Upload the corporate template on the Report Templates screen and export again.";
+
+const UNREADABLE_TEMPLATE_NOTICE =
+  "The active Word template could not be downloaded, so this document uses the built-in layout " +
+  "instead of the EBARA letterhead. The report itself is complete — export again once the template " +
+  "is reachable.";
+
+const UNUSABLE_TEMPLATE_NOTICE =
+  "The active Word template could not be used as a shell, so this document uses the built-in layout " +
+  "instead of the EBARA letterhead. The report itself is complete — re-upload the template on the " +
+  "Report Templates screen and export again.";
+
+/**
+ * Generate the document, preferring the corporate shell.
+ *
+ * Any failure of the template path falls back rather than losing the user their
+ * export — but it never falls back quietly: the notice is returned to the caller
+ * and the reason is logged. The alternative is handing somebody a differently
+ * branded document that looks finished.
+ */
+async function generate(
+  report: Report,
+  photos: readonly ReportPhoto[],
+  images: Map<string, ExportImage>,
+): Promise<GeneratedDocument> {
+  // `getActiveTemplateBytes` answers `ok(null)` when no template is active —
+  // that is a normal state, not a failure, and it is the state a fresh project
+  // is in. A genuine read failure comes back as `!ok`. Both fall back to the
+  // built-in layout; only the notice differs.
+  const template = await getActiveTemplateBytes();
+
+  if (!template.ok || template.data === null) {
+    return {
+      buffer: await buildReportDocx({ report, photos, images }),
+      usedCorporateTemplate: false,
+      templateNotice: template.ok ? NO_TEMPLATE_NOTICE : UNREADABLE_TEMPLATE_NOTICE,
+    };
+  }
+
+  try {
+    return {
+      buffer: buildTemplateReportDocx({ report, photos, images, template: template.data.bytes }),
+      usedCorporateTemplate: true,
+      templateNotice: null,
+    };
+  } catch (error) {
+    console.error("[export] the corporate template could not be used", error);
+    return {
+      buffer: await buildReportDocx({ report, photos, images }),
+      usedCorporateTemplate: false,
+      templateNotice: UNUSABLE_TEMPLATE_NOTICE,
+    };
+  }
+}
+
 export async function exportReportDocx(reportId: string): Promise<DataResult<ExportedDocx>> {
   const user = await requireUser();
   if (!user) return fail("unauthenticated");
@@ -108,9 +190,9 @@ export async function exportReportDocx(reportId: string): Promise<DataResult<Exp
 
   const { images, skipped } = await loadImages(photos, paths);
 
-  let buffer: Buffer;
+  let document: GeneratedDocument;
   try {
-    buffer = await buildReportDocx({ report, photos, images });
+    document = await generate(report, photos, images);
   } catch (error) {
     console.error("[export] docx generation failed", error);
     return fail(
@@ -118,6 +200,8 @@ export async function exportReportDocx(reportId: string): Promise<DataResult<Exp
       "The Word document could not be generated. Nothing was changed — try again, and if it keeps failing, remove the most recently added photograph and retry.",
     );
   }
+
+  const { buffer } = document;
 
   if (buffer.length < 1000) {
     // A file this small is not a report; returning it would look like success.
@@ -133,7 +217,12 @@ export async function exportReportDocx(reportId: string): Promise<DataResult<Exp
       file_name: fileName,
       status: "ready",
       size_bytes: buffer.length,
-      warnings: skipped.length ? { skippedPhotos: skipped } : {},
+      warnings: {
+        ...(skipped.length ? { skippedPhotos: skipped } : {}),
+        // Recorded on the row too: months later, "why is this one not on
+        // letterhead?" is answerable from the export history.
+        ...(document.templateNotice ? { templateFallback: document.templateNotice } : {}),
+      },
       completed_at: new Date().toISOString(),
       created_by: user.id,
     });
@@ -145,5 +234,7 @@ export async function exportReportDocx(reportId: string): Promise<DataResult<Exp
     content: buffer.toString("base64"),
     byteLength: buffer.length,
     skipped,
+    usedCorporateTemplate: document.usedCorporateTemplate,
+    templateNotice: document.templateNotice,
   });
 }

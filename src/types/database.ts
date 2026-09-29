@@ -1222,6 +1222,13 @@ export type Database = {
           is_active: boolean;
           is_archived: boolean;
           change_note: string | null;
+          /**
+           * Page size, margins, text box, appendix columns and body font,
+           * measured from the .docx at upload (0007). `{}` when the file could
+           * not be measured — see `TemplateGeometry` in
+           * src/lib/data/template-actions.ts for the keys.
+           */
+          page_geometry: Json;
           created_at: string;
           updated_at: string;
           created_by: string | null;
@@ -1235,6 +1242,7 @@ export type Database = {
           is_active?: boolean;
           is_archived?: boolean;
           change_note?: string | null;
+          page_geometry?: Json;
           created_at?: string;
           updated_at?: string;
           created_by?: string | null;
@@ -1248,6 +1256,7 @@ export type Database = {
           is_active?: boolean;
           is_archived?: boolean;
           change_note?: string | null;
+          page_geometry?: Json;
           created_at?: string;
           updated_at?: string;
           created_by?: string | null;

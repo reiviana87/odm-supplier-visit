@@ -1,12 +1,19 @@
 /**
- * Appendix pagination — README §16, and the arithmetic the DOCX export obeys.
+ * Appendix pagination — README §16, and the arithmetic both DOCX generators obey.
  *
- * The business brief asks for twelve alternating photo/caption rows. On A4 that
- * is not a layout, it is a wish: a 6.5 cm photo with its caption underneath
- * occupies roughly 7.6 cm of column height, so three rows fill the printable
- * area and twelve would need four pages. The brief is explicit that the photo
- * height is the requirement and the row count is not, so this module keeps
- * 6.5 cm fixed, keeps two columns, and paginates instead of shrinking.
+ * The numbers here are measured from the corporate template
+ * (`EBARA_ODM_Visit_Report_v1.5.docx`), not chosen: its appendix photographs
+ * carry `wp:extent` values of 2520000 x 1890000 EMU for a landscape shot and
+ * 1890000 x 2520000 for a portrait one — 7.00 x 5.25 cm and 5.25 x 7.00 cm.
+ * That is one rule, not two: every photograph is fitted inside a 7 cm square
+ * with its aspect ratio preserved. Six photographs to a page, three rows of two.
+ *
+ * The business brief asks for twelve alternating photo/caption rows on one page.
+ * On A4 that is not a layout, it is a wish: three rows of a 7 cm photo plus its
+ * caption already fill the printable area, so twelve would need four pages. The
+ * brief is explicit that the photo size is the requirement and the row count is
+ * not, so this module keeps the 7 cm box, keeps two columns, and paginates
+ * instead of shrinking.
  *
  * Everything is in millimetres until the last moment, because that is how the
  * page is specified. `docx` wants twentieths of a point, so the conversion
@@ -20,36 +27,58 @@ export const PAGE = { width: 210, height: 297 } as const;
 export const MARGIN_MM = 20;
 
 /**
- * The appendix gets its own, narrower margin, and the reason is arithmetic.
+ * The appendix keeps the corporate margin, and that is a change of mind.
  *
- * A 4:3 landscape photograph — what a phone or a compact camera produces, so
- * most of what a visit collects — is 8.67 cm wide at the required 6.5 cm
- * height. Two of those plus a gutter need 18 cm of page, which 2 cm margins do
- * not leave. Keeping 2 cm here would quietly bound every landscape photo by
- * width and print it at 6.1 cm, which is exactly the silent shrink §16 forbids.
+ * It used to be 15 mm, and the justification was width: a 4:3 landscape photo
+ * printed 8.67 cm wide at the old fixed 6.5 cm HEIGHT, and two of those plus a
+ * gutter would not fit between 2 cm margins. The 7 cm BOX measured from the
+ * template removes that constraint — the widest a photograph can now print is
+ * 7 cm, and two 7 cm photos plus the gutter need 15 cm of a 17 cm text column.
+ * There is nothing left for a narrower appendix margin to buy, so the appendix
+ * uses the same 2 cm as the rest of the report, which is also the template's own
+ * `w:pgMar` (1134 twips a side).
  *
- * 1.5 cm is still a normal corporate margin — wider than Word's own "Narrow"
- * preset — and it is applied only to the appendix section, so the text pages
- * keep their 2 cm.
+ * The constant survives rather than being deleted because the generators name
+ * the appendix section's margin explicitly, and a reader of that code should not
+ * have to know whether it happens to equal the body's.
  */
-export const APPENDIX_MARGIN_MM = 15;
+export const APPENDIX_MARGIN_MM = MARGIN_MM;
 
-/** README §16 — the export requirement, not a preference. */
-export const PHOTO_HEIGHT_MM = 65;
+/**
+ * The side of the square every appendix photograph is fitted inside — the
+ * measured 7.00 cm of the corporate template. It bounds width AND height, which
+ * is why it is not called a height any more.
+ */
+export const PHOTO_BOX_MM = 70;
 
 export const COLUMNS = 2;
 
 /** Space between the two columns. */
 export const COLUMN_GUTTER_MM = 6;
 
-/** Caption block under each photo: two 9pt lines plus the gap above them. */
-export const CAPTION_BLOCK_MM = 11;
+/**
+ * Caption block under each photo.
+ *
+ * The template's captions are a single centred Arial 10pt line, which occupies
+ * about 4.1 mm; 8 mm is two of them, so a caption that wraps still does not push
+ * the row over its budget.
+ */
+export const CAPTION_BLOCK_MM = 8;
 
-/** Breathing room under a caption before the next row's photo. */
-export const ROW_GAP_MM = 5;
+/**
+ * Slack under a caption before the next row's photograph.
+ *
+ * The template's appendix table asks for none — its cells have no vertical
+ * padding — so this is not a design gap but rounding room between Word's line
+ * metrics and this arithmetic.
+ */
+export const ROW_GAP_MM = 2;
 
-/** The "Appendix" heading only costs height on the first page. */
-export const HEADING_MM = 14;
+/**
+ * What the "Appendix 1 - Pictures" heading costs on the first appendix page:
+ * one 10.5pt bold line and the blank paragraph under it.
+ */
+export const HEADING_MM = 9;
 
 export interface AppendixGeometry {
   /** Usable width between the margins. */
@@ -70,7 +99,7 @@ export function appendixGeometry(): AppendixGeometry {
   const contentWidthMm = PAGE.width - APPENDIX_MARGIN_MM * 2;
   const contentHeightMm = PAGE.height - APPENDIX_MARGIN_MM * 2;
   const columnWidthMm = (contentWidthMm - COLUMN_GUTTER_MM * (COLUMNS - 1)) / COLUMNS;
-  const rowHeightMm = PHOTO_HEIGHT_MM + CAPTION_BLOCK_MM + ROW_GAP_MM;
+  const rowHeightMm = PHOTO_BOX_MM + CAPTION_BLOCK_MM + ROW_GAP_MM;
 
   return {
     contentWidthMm,
@@ -124,8 +153,8 @@ export function planAppendix<T>(
   let warning: string | null = null;
   if (requestedRowsPerPage !== undefined && requestedRowsPerPage > geometry.rowsPerPage) {
     warning =
-      `${requestedRowsPerPage} rows per page do not fit on A4 at the required ` +
-      `${PHOTO_HEIGHT_MM / 10} cm photo height — ${geometry.rowsPerPage} fit, so the ` +
+      `${requestedRowsPerPage} rows per page do not fit on A4 inside the required ` +
+      `${PHOTO_BOX_MM / 10} cm photo box — ${geometry.rowsPerPage} fit, so the ` +
       "appendix continues on further pages rather than shrinking the photographs.";
   }
 
@@ -164,28 +193,39 @@ export function mmToPt(mm: number): number {
 }
 
 /**
- * The printed size of one photo, in points, at the required height.
+ * The printed size of one photo, in points, fitted inside the 7 cm box.
  *
- * Aspect ratio is preserved. A photo wider than the column is bounded by the
- * column instead, which is the only case where the height drops below 6.5 cm —
- * and it drops because the page cannot be wider, not to fit more rows in.
+ * Aspect ratio is preserved, so a landscape photograph touches the box's width
+ * and a portrait one its height — which is exactly the 7.00 x 5.25 cm and
+ * 5.25 x 7.00 cm pair measured in the corporate template. An extreme panorama is
+ * bounded by the box's width and simply prints short; it is never widened to fill
+ * the column, because the template's grid is a square of fixed size and not a
+ * column to be filled.
+ *
+ * `columnWidthMm` still bounds the result, for the case where a future template
+ * asks for narrower columns than the box.
  */
 export function photoBoxPt(
   naturalWidth: number,
   naturalHeight: number,
   columnWidthMm: number,
 ): { width: number; height: number } {
-  const maxHeightPt = mmToPt(PHOTO_HEIGHT_MM);
-  const maxWidthPt = mmToPt(columnWidthMm);
+  const boxPt = mmToPt(PHOTO_BOX_MM);
+  const maxWidthPt = Math.min(boxPt, mmToPt(columnWidthMm));
 
   // A photo with unknown dimensions is treated as 4:3, the commonest shape a
   // phone or compact camera produces, rather than stretched to the box.
   const ratio =
     naturalWidth > 0 && naturalHeight > 0 ? naturalWidth / naturalHeight : 4 / 3;
 
-  const height = maxHeightPt;
-  const width = height * ratio;
+  if (ratio >= 1) {
+    // Landscape (and square): the width is the binding side.
+    const width = maxWidthPt;
+    return { width, height: width / ratio };
+  }
 
-  if (width <= maxWidthPt) return { width, height };
-  return { width: maxWidthPt, height: maxWidthPt / ratio };
+  // Portrait: the height is the binding side, unless that would overflow a
+  // column narrower than the box.
+  const height = Math.min(boxPt, maxWidthPt / ratio);
+  return { width: height * ratio, height };
 }

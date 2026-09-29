@@ -54,3 +54,4 @@ Thumbs.db
 
 # Playwright MCP scratch output
 .playwright-mcp/
+tmp-sample/

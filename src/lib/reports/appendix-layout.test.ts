@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   COLUMNS,
-  PHOTO_HEIGHT_MM,
+  HEADING_MM,
+  PHOTO_BOX_MM,
   appendixGeometry,
   mmToPt,
   mmToTwip,
@@ -14,35 +15,42 @@ import {
  * The appendix is the one part of the export whose correctness is arithmetic
  * rather than judgement, so it is worth pinning: a regression here silently
  * ships a report with overlapping photographs or a shrunken 4 cm image.
+ *
+ * The numbers asserted below are the ones measured in the corporate template —
+ * a 7 cm photo box, six photographs to a page — not preferences.
  */
 describe("appendix geometry", () => {
   const g = appendixGeometry();
 
-  it("uses the A4 content area left by the appendix margins", () => {
-    expect(g.contentWidthMm).toBe(180);
-    expect(g.contentHeightMm).toBe(267);
+  it("uses the A4 content area left by the corporate margins", () => {
+    expect(g.contentWidthMm).toBe(170);
+    expect(g.contentHeightMm).toBe(257);
   });
 
   it("splits the width into two equal columns with a gutter", () => {
-    expect(g.columnWidthMm).toBe(87);
+    expect(g.columnWidthMm).toBe(82);
     expect(g.columnWidthMm * COLUMNS).toBeLessThan(g.contentWidthMm);
   });
 
-  it("gives a 4:3 landscape photo room for the full 6.5 cm height", () => {
-    // This is why the appendix margin is 15mm and not 20mm: 6.5 * 4/3 = 8.67cm.
-    expect(g.columnWidthMm).toBeGreaterThanOrEqual((PHOTO_HEIGHT_MM * 4) / 3 / 10 * 10);
+  it("leaves a column wider than the photo box, so nothing is bounded by width", () => {
+    // Why the appendix no longer needs a margin of its own: the widest a
+    // photograph can print is the 7 cm box, and 8.2 cm columns clear it.
+    expect(g.columnWidthMm).toBeGreaterThan(PHOTO_BOX_MM / 10);
+    expect(g.columnWidthMm).toBeGreaterThan(PHOTO_BOX_MM);
   });
 
-  it("fits three rows per page, not the twelve the brief asks for", () => {
-    // 65 photo + 11 caption + 5 gap = 81mm per row; 267 / 81 = 3.3
-    expect(g.rowHeightMm).toBe(81);
+  it("fits six photographs per page, as the template does", () => {
+    // 70 photo + 8 caption + 2 slack = 80mm per row; 257 / 80 = 3.2
+    expect(g.rowHeightMm).toBe(80);
     expect(g.rowsPerPage).toBe(3);
     expect(g.rowsFirstPage).toBe(3);
+    expect(g.rowsPerPage * COLUMNS).toBe(6);
+    expect(g.rowsFirstPage * COLUMNS).toBe(6);
   });
 
   it("never claims room for a row that would overflow the page", () => {
     expect(g.rowsPerPage * g.rowHeightMm).toBeLessThanOrEqual(g.contentHeightMm);
-    expect(g.rowsFirstPage * g.rowHeightMm + 14).toBeLessThanOrEqual(g.contentHeightMm);
+    expect(g.rowsFirstPage * g.rowHeightMm + HEADING_MM).toBeLessThanOrEqual(g.contentHeightMm);
   });
 });
 
@@ -84,10 +92,10 @@ describe("planAppendix", () => {
   it("warns instead of shrinking when the brief's 12 rows are requested", () => {
     const plan = planAppendix(photos(24), 12);
     expect(plan.warning).toContain("do not fit on A4");
-    expect(plan.warning).toContain("6.5 cm");
-    // The photo height is still the required one — the warning is the answer,
-    // not a smaller image.
-    expect(PHOTO_HEIGHT_MM).toBe(65);
+    expect(plan.warning).toContain("7 cm");
+    // The photo box is still the measured one — the warning is the answer, not a
+    // smaller image.
+    expect(PHOTO_BOX_MM).toBe(70);
   });
 
   it("does not warn when the request fits", () => {
@@ -98,27 +106,43 @@ describe("planAppendix", () => {
 describe("photo sizing", () => {
   const { columnWidthMm } = appendixGeometry();
 
-  it("prints a 4:3 photo at exactly the required height", () => {
+  it("prints a 4:3 landscape photo at the template's measured 7.00 x 5.25 cm", () => {
     const box = photoBoxPt(4000, 3000, columnWidthMm);
-    expect(box.height).toBeCloseTo(mmToPt(65), 5);
-    expect(box.width).toBeLessThanOrEqual(mmToPt(columnWidthMm));
+    expect(box.width).toBeCloseTo(mmToPt(70), 5);
+    expect(box.height).toBeCloseTo(mmToPt(52.5), 5);
   });
 
-  it("preserves aspect ratio for a portrait photo", () => {
+  it("prints a 3:4 portrait photo at the measured 5.25 x 7.00 cm", () => {
     const box = photoBoxPt(3000, 4000, columnWidthMm);
+    expect(box.width).toBeCloseTo(mmToPt(52.5), 5);
+    expect(box.height).toBeCloseTo(mmToPt(70), 5);
     expect(box.width / box.height).toBeCloseTo(0.75, 5);
-    expect(box.height).toBeCloseTo(mmToPt(65), 5);
   });
 
-  it("bounds a panorama by the column instead of overflowing it", () => {
+  it("fits a square photo to the whole box", () => {
+    const box = photoBoxPt(2000, 2000, columnWidthMm);
+    expect(box.width).toBeCloseTo(mmToPt(70), 5);
+    expect(box.height).toBeCloseTo(mmToPt(70), 5);
+  });
+
+  it("keeps a panorama inside the box rather than filling the column", () => {
     const box = photoBoxPt(8000, 1000, columnWidthMm);
-    expect(box.width).toBeCloseTo(mmToPt(columnWidthMm), 5);
-    expect(box.height).toBeLessThan(mmToPt(65));
+    expect(box.width).toBeCloseTo(mmToPt(70), 5);
+    expect(box.height).toBeCloseTo(mmToPt(70) / 8, 5);
+    // The column is wider than the box; the box is what bounds the photograph.
+    expect(box.width).toBeLessThan(mmToPt(columnWidthMm));
+  });
+
+  it("is bounded by a column narrower than the box", () => {
+    const box = photoBoxPt(3000, 4000, 40);
+    expect(box.width).toBeCloseTo(mmToPt(40), 5);
+    expect(box.height).toBeCloseTo(mmToPt(40) / 0.75, 5);
   });
 
   it("assumes 4:3 when the dimensions are unknown", () => {
     const box = photoBoxPt(0, 0, columnWidthMm);
     expect(box.width / box.height).toBeCloseTo(4 / 3, 5);
+    expect(box.width).toBeCloseTo(mmToPt(70), 5);
   });
 });
 

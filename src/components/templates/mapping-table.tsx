@@ -1,10 +1,4 @@
-"use client";
-
-import { Fragment } from "react";
-
-import { Tag } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Icon } from "@/components/ui/icon";
+import { Blueprint } from "@/components/ui/blueprint";
 import {
   Table,
   TableFrame,
@@ -14,121 +8,143 @@ import {
   Thead,
   Tr,
 } from "@/components/ui/table";
-import { useToast } from "@/components/ui/toast";
-import { PLACEHOLDER_MAPPINGS } from "@/lib/mock-data";
+import { SECTIONS, type SectionId } from "@/types/domain";
 
 /**
- * Placeholder mapping — README §16, transcribed from the approved prototype
- * (design-handoff/ODM Supplier Visit.dc.html lines 1544..1580).
+ * How the export fills the corporate template — the screen README §16 calls the
+ * placeholder mapping, kept at its approved route and in its approved frame.
  *
- * "A placeholder present in the template but unmapped, or mapped but missing
- * from the template, is flagged `#8a6a12` in the status column" — that is
- * `var(--color-warning-strong)`, on the prototype's warning ground.
+ * There is no mapping to show. The corporate file (`EBARA_ODM_Visit_Report`) is
+ * a finished example report, not a form: it contains no `{{TOKEN}}` and no Word
+ * merge field anywhere, so nothing can be substituted by name. The export
+ * clones the document's shell and writes each section into it in order, which is
+ * what this screen now says instead of a table of bindings that never existed.
+ *
+ * Nothing here is interactive, so it renders on the server.
  */
 
-const UNMAPPED = PLACEHOLDER_MAPPINGS.filter((mapping) => !mapping.isMapped);
+const EM_DASH = "—";
 
-/** Re-reading the `.docx` is part of the Word pipeline (Phase 5). */
-export function RescanTemplateButton() {
-  const { toast } = useToast();
+/**
+ * Where each section's content comes from, in the order the document is built.
+ * The section list itself is `SECTIONS` — the same definition the editor
+ * navigator and the completion maths use, so this screen cannot drift from the
+ * report it describes.
+ */
+const FILLED_FROM: Record<SectionId, string> = {
+  general:
+    "The report header — document number, employee, period, supplier and visit date",
+  purpose: "§1 Purpose, as written in the editor",
+  company: "The supplier snapshot frozen when the report was created",
+  overview: "§3 Company Overview, as written in the editor",
+  products: "§4 Main Products — the prose, plus the product table when there is one",
+  "product-images": "§4.1 photographs, each with its caption",
+  target: "§5 Target Products — the target product rows",
+  visit: "§6 observations, plus the Q&A block when there is one",
+  certificates: "The supplier's certificate records",
+  partners: "§8 Partners, as written in the editor",
+  "partner-images": "§8.1 photographs, each with its caption",
+  conclusion: "§9 Conclusion, as written in the editor",
+  appendix: "Appendix photographs and their captions — two to a row",
+};
 
+/** What the template contributes that no report section fills. */
+const SHELL_FURNITURE = [
+  "A4 page size and the template's own margins",
+  "The header, with the EBARA logo and the four department lines",
+  "The footer table — department, prepared by, date and page number",
+  "The Word styles and the heading formatting the headings are written in",
+  "The signature block that closes the report, before the appendix",
+] as const;
+
+/**
+ * The explanation that replaced the seeded mapping table. It states how the
+ * export works — including the part users ask about most, what happens to a
+ * section nobody wrote.
+ */
+export function ExportShellNote() {
   return (
-    <Button
-      variant="secondary"
-      icon="refresh"
-      onClick={() =>
-        toast(
-          "Re-scanning the template lands in Phase 5 — the mapping below is unchanged.",
-        )
-      }
-    >
-      Re-scan template
-    </Button>
+    <Blueprint style={{ padding: 16, marginBottom: 20 }}>
+      <h4 style={{ margin: 0 }}>There are no placeholders to map</h4>
+      <div
+        style={{
+          fontSize: 12.5,
+          lineHeight: 1.65,
+          color: "var(--color-neutral-800)",
+          marginTop: 8,
+        }}
+      >
+        <p style={{ margin: 0 }}>
+          The corporate template is a finished example report, not a form: it
+          contains no <span className="mono">{"{{TOKEN}}"}</span> and no Word
+          merge field. So the export does not substitute values by name. It
+          builds each document from the template&apos;s shell and writes the
+          report into it, section by section, in the order below.
+        </p>
+        <p style={{ margin: "9px 0 0" }}>
+          A section nobody wrote comes out as its heading with no text under it.
+          That is what the completion ticks in the editor are for — the export
+          panel lists the empty sections before it generates anything.
+        </p>
+      </div>
+
+      <div className="kicker-muted" style={{ margin: "14px 0 6px" }}>
+        Taken from the template itself
+      </div>
+      <ul
+        style={{
+          margin: 0,
+          paddingLeft: 18,
+          fontSize: 12.5,
+          lineHeight: 1.7,
+          color: "var(--color-neutral-800)",
+        }}
+      >
+        {SHELL_FURNITURE.map((item) => (
+          <li key={item}>{item}</li>
+        ))}
+      </ul>
+    </Blueprint>
   );
 }
 
-export function MappingTable() {
+/** The sections the export writes, in document order. */
+export function ExportSectionsTable() {
   return (
-    <TableFrame style={{ marginBottom: 20 }}>
+    <TableFrame>
       <Table>
         <Thead>
           <Tr>
-            <Th width={250}>Word Placeholder</Th>
-            <Th>App Field</Th>
-            <Th>Sample value</Th>
-            <Th width={88}>Status</Th>
+            <Th width={60}>§</Th>
+            <Th width={260}>Section in the document</Th>
+            <Th>Filled from</Th>
           </Tr>
         </Thead>
         <Tbody>
-          {PLACEHOLDER_MAPPINGS.map((mapping) => (
-            <Tr key={mapping.placeholder}>
-              <Td className="mono" style={{ color: "var(--color-accent-800)" }}>
-                {mapping.placeholder}
+          {SECTIONS.map((section) => (
+            <Tr key={section.id}>
+              <Td
+                nowrap
+                className="mono"
+                style={{ color: "var(--color-accent-800)", fontSize: 12 }}
+              >
+                {section.number || EM_DASH}
               </Td>
-              <Td style={{ fontSize: 12.5 }}>{mapping.source}</Td>
-              <Td style={{ fontSize: 12, color: "var(--color-neutral-700)", maxWidth: 300 }}>
-                {mapping.sampleValue}
+              <Td
+                style={{
+                  fontSize: 12.5,
+                  paddingLeft: section.isSubSection ? 28 : undefined,
+                }}
+              >
+                {section.label}
               </Td>
-              <Td>
-                {mapping.isMapped ? (
-                  <Tag tone="accent">Bound</Tag>
-                ) : (
-                  <Tag tone="warning" style={{ color: "var(--color-warning-strong)" }}>
-                    Empty
-                  </Tag>
-                )}
+              <Td style={{ fontSize: 12, color: "var(--color-neutral-700)" }}>
+                {FILLED_FROM[section.id]}
               </Td>
             </Tr>
           ))}
         </Tbody>
       </Table>
     </TableFrame>
-  );
-}
-
-/**
- * The band under the table — prototype lines 1576..1579. It only appears while
- * something in the mapping resolves to nothing; the count and the placeholder
- * names come from the data.
- */
-export function MappingWarning() {
-  if (UNMAPPED.length === 0) return null;
-
-  const one = UNMAPPED.length === 1;
-
-  return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "flex-start",
-        gap: 9,
-        padding: "11px 13px",
-        border: "1px solid var(--color-warning-border)",
-        background: "var(--color-warning-bg)",
-        fontSize: 12.5,
-        lineHeight: 1.6,
-      }}
-    >
-      <Icon
-        name="alert"
-        size={14}
-        style={{ marginTop: 2, flex: "none", color: "var(--color-warning-ink)" }}
-      />
-      {/* #5f4610 is the prototype's band ink; it has no token of its own. */}
-      <span style={{ color: "#5f4610" }}>
-        <strong style={{ fontWeight: 500 }}>
-          {UNMAPPED.length} placeholder{one ? "" : "s"} resolve{one ? "s" : ""} to
-          empty:
-        </strong>{" "}
-        {UNMAPPED.map((mapping, index) => (
-          <Fragment key={mapping.placeholder}>
-            {index > 0 ? ", " : null}
-            <span className="mono">{mapping.placeholder}</span>
-          </Fragment>
-        ))}{" "}
-        — the source section has not been written. The export will leave the
-        heading with no body text unless you generate or write it first.
-      </span>
-    </div>
   );
 }
