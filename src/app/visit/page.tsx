@@ -4,7 +4,13 @@ import { ButtonLink } from "@/components/ui/button";
 import { listReportPhotos } from "@/lib/data/photo-actions";
 import { getReport, listReports } from "@/lib/data/reports";
 import { reportCompletion, sectionCompletion } from "@/lib/reports/completion";
-import { SECTIONS, type Report, type ReportPhoto } from "@/types/domain";
+import {
+  SECTIONS,
+  type ImageRegion,
+  type Report,
+  type ReportPhoto,
+  type SectionId,
+} from "@/types/domain";
 
 /**
  * `/visit` — mobile Visit Mode (README §17, screenshots 16 / 17 / 17b / 18).
@@ -27,6 +33,81 @@ import { SECTIONS, type Report, type ReportPhoto } from "@/types/domain";
 
 /** The "Last photos" strip holds six (prototype line 3304). */
 const LAST_PHOTO_COUNT = 6;
+
+/** How much of a section fits on one line of the report preview. */
+const EXCERPT_CHARS = 92;
+
+/** One line of prose, collapsed and cut where it stops fitting. */
+function oneLine(text: string): string {
+  const flat = text.trim().replace(/\s+/g, " ");
+  return flat.length > EXCERPT_CHARS ? `${flat.slice(0, EXCERPT_CHARS - 1)}\u2026` : flat;
+}
+
+function plural(count: number, one: string, many = `${one}s`): string {
+  return `${count} ${count === 1 ? one : many}`;
+}
+
+/**
+ * What a section holds, in a line — the preview's whole point.
+ *
+ * The mobile report screen used to be thirteen labels and thirteen ticks, which
+ * told the reader a section was done without telling them one thing that was in
+ * it. These are deliberately derived from the report rather than from the
+ * completion predicates: "complete" and "what it says" are different questions.
+ */
+function excerptFor(
+  sectionId: SectionId,
+  report: Report,
+  photos: readonly ReportPhoto[],
+): string {
+  const sections = report.sections;
+  const inRegion = (region: ImageRegion) =>
+    photos.filter((photo) => photo.region === region).length;
+
+  switch (sectionId) {
+    case "general":
+      return oneLine(`${report.supplierShortName} \u00b7 ${report.visitDate}`);
+    case "purpose":
+      return oneLine(sections.purpose);
+    case "company":
+      return oneLine(report.supplierSnapshot.legalName);
+    case "overview":
+      return oneLine(sections.overview);
+    case "products":
+      return sections.productRows.length > 0
+        ? oneLine(`${plural(sections.productRows.length, "row")} \u00b7 ${sections.mainProducts}`)
+        : oneLine(sections.mainProducts);
+    case "product-images":
+      return inRegion("MAIN_PRODUCT_IMAGES") === 0
+        ? ""
+        : plural(inRegion("MAIN_PRODUCT_IMAGES"), "photograph");
+    case "target":
+      return sections.targetProducts.length > 0
+        ? oneLine(
+            `${plural(sections.targetProducts.length, "product")} \u00b7 ${sections.targetNotes}`,
+          )
+        : oneLine(sections.targetNotes);
+    case "visit":
+      return sections.observations.length === 0 && sections.qaBullets.length === 0
+        ? ""
+        : `${plural(sections.observations.length, "observation")} \u00b7 ${plural(
+            sections.qaBullets.length,
+            "key point",
+          )}`;
+    case "certificates":
+      return oneLine(sections.certificateNote);
+    case "partners":
+      return oneLine(sections.partners);
+    case "partner-images":
+      return inRegion("PARTNER_IMAGES") === 0 ? "" : plural(inRegion("PARTNER_IMAGES"), "photograph");
+    case "conclusion":
+      return oneLine(sections.conclusion);
+    case "appendix":
+      return inRegion("APPENDIX_IMAGES") === 0
+        ? ""
+        : plural(inRegion("APPENDIX_IMAGES"), "photograph");
+  }
+}
 
 /**
  * Offline sync is the one thing on this screen with no store behind it: the
@@ -114,9 +195,11 @@ export default async function VisitPage() {
           number: section.number,
           label: section.label,
           done: done[section.id],
+          excerpt: excerptFor(section.id, visit, photos),
         }))}
         counters={{ photos: photos.length, notes: visit.sections.qaBullets.length }}
         observations={visit.sections.observations}
+        keyPoints={visit.sections.qaBullets}
         photos={photos}
         lastPhotos={latestFirst(photos).slice(0, LAST_PHOTO_COUNT)}
       />

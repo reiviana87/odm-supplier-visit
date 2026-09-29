@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 
 import { Blueprint } from "@/components/ui/blueprint";
@@ -10,13 +10,14 @@ import { Icon } from "@/components/ui/icon";
 import { CompletionIndicator } from "@/components/ui/progress";
 import { EmptyState } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
+import { generatePhotoCaption } from "@/lib/ai/actions";
 import { updatePhotoCaption, uploadReportPhoto } from "@/lib/data/photo-actions";
 import {
   getSectionRecord,
   saveObservations,
   saveSection,
 } from "@/lib/data/report-actions";
-import { joinQaBullets, splitQaBullets } from "@/lib/data/report-mappers";
+import { joinQaBullets } from "@/lib/data/report-mappers";
 import { prepareImage } from "@/lib/photos/prepare-image";
 import {
   IMAGE_REGIONS,
@@ -60,7 +61,13 @@ import { VisitHeader } from "./visit-header";
  * works; the caption sheet then sits over the grid until each frame is filed.
  */
 
-export type VisitScreen = "home" | "photos" | "note" | "observation" | "report";
+export type VisitScreen =
+  | "home"
+  | "photos"
+  | "notes"
+  | "note"
+  | "observation"
+  | "report";
 
 /** One navigator row of the read-only report screen. */
 export interface VisitSectionRow {
@@ -69,6 +76,14 @@ export interface VisitSectionRow {
   number: string;
   label: string;
   done: boolean;
+  /**
+   * What the section actually holds, in a line.
+   *
+   * A tick alone told the user nothing: the report screen listed thirteen
+   * labels and thirteen circles, and a section could be ticked without the
+   * reader learning a single thing that was written in it.
+   */
+  excerpt: string;
 }
 
 /**
@@ -113,6 +128,8 @@ export interface VisitModeProps {
    * set, so the write needs the rows it must keep, not only the new one.
    */
   observations: readonly Observation[];
+  /** §6's key points, one per line on the `visit` row — what a Note becomes. */
+  keyPoints: readonly string[];
   /** Every stored photograph, in print order — what the Photos screen shows. */
   photos: readonly ReportPhoto[];
   /** The six most recent, for the home strip. */
@@ -143,6 +160,7 @@ export function VisitMode({
   sections,
   counters,
   observations,
+  keyPoints,
   photos,
   lastPhotos,
 }: VisitModeProps) {
@@ -213,7 +231,7 @@ export function VisitMode({
    * by then it is stored, and the sentence says which of the two happened.
    */
   const fileHead = useCallback(
-    async (withCaption: boolean) => {
+    async (mode: "mine" | "ai") => {
       const head = pending[0];
       if (!head || filing) return;
 
@@ -236,11 +254,28 @@ export function VisitMode({
       }
 
       const text = caption.trim();
-      if (withCaption && text !== "") {
+      let note: string;
+
+      if (mode === "ai") {
+        // The button says the model will caption it, so the model is asked —
+        // here, not "later" in some queue that does not exist. The proposal
+        // lands in ai_caption and waits to be accepted at a desk, which is the
+        // §16 rule: nothing the model writes becomes the caption on its own.
+        const suggested = await generatePhotoCaption({
+          reportId,
+          photoId: result.data.id,
+          hint: text || undefined,
+        });
+        note = suggested.ok
+          ? `Filed under ${IMAGE_REGION_LABELS[region]} — the AI drafted a caption to review.`
+          : `Filed under ${IMAGE_REGION_LABELS[region]}, but the AI caption failed: ${suggested.error.message}`;
+      } else if (text !== "") {
         const captioned = await updatePhotoCaption(result.data.id, text);
-        if (!captioned.ok) {
-          toast(`Photograph saved, but its caption did not: ${captioned.error.message}`, "warning");
-        }
+        note = captioned.ok
+          ? `Filed under ${IMAGE_REGION_LABELS[region]} with your caption.`
+          : `Photograph saved, but its caption did not: ${captioned.error.message}`;
+      } else {
+        note = `Filed under ${IMAGE_REGION_LABELS[region]} — caption still to write.`;
       }
 
       URL.revokeObjectURL(head.previewUrl);
@@ -248,12 +283,7 @@ export function VisitMode({
       setCaption("");
       setFiling(false);
       router.refresh();
-
-      toast(
-        withCaption && text !== ""
-          ? `Filed under ${IMAGE_REGION_LABELS[region]} with your caption.`
-          : `Filed under ${IMAGE_REGION_LABELS[region]} — caption still to write.`,
-      );
+      toast(note);
     },
     [caption, filing, pending, region, reportId, router, toast],
   );
@@ -266,6 +296,37 @@ export function VisitMode({
     setCaption("");
     cameraRef.current?.click();
   }, [pending]);
+
+  /**
+   * Replace §6's key points with `next`.
+   *
+   * Read-modify-write against the row's current version rather than the one
+   * the phone loaded when the visit started: someone at a desk may well be in
+   * the same section, and a stale version is a refused write, not a silent
+   * overwrite.
+   */
+  const writeKeyPoints = useCallback(
+    async (next: readonly string[]): Promise<boolean> => {
+      const record = await getSectionRecord(reportId, "visit");
+      if (!record.ok) {
+        toast(record.error.message, "error");
+        return false;
+      }
+      const result = await saveSection({
+        reportId,
+        sectionId: "visit",
+        body: joinQaBullets([...next]),
+        version: record.data.version,
+      });
+      if (!result.ok) {
+        toast(result.error.message, "error");
+        return false;
+      }
+      router.refresh();
+      return true;
+    },
+    [reportId, router, toast],
+  );
 
   /**
    * A Quick Note becomes one of §6's key points.
@@ -285,30 +346,14 @@ export function VisitMode({
     }
 
     setSaving(true);
-    const record = await getSectionRecord(reportId, "visit");
-    if (!record.ok) {
-      setSaving(false);
-      toast(record.error.message, "error");
-      return;
-    }
-
-    const bullets = [...splitQaBullets(record.data.body), note];
-    const result = await saveSection({
-      reportId,
-      sectionId: "visit",
-      body: joinQaBullets(bullets),
-      version: record.data.version,
-    });
+    const saved = await writeKeyPoints([...keyPoints, note]);
     setSaving(false);
+    if (!saved) return;
 
-    if (!result.ok) {
-      toast(result.error.message, "error");
-      return;
-    }
-
-    setScreen("home");
-    router.refresh();
-    toast(`Note saved to §6 key points · ${bullets.length} on this report`);
+    // Straight to the list, so the answer to "where did that go?" is the next
+    // thing on screen rather than a number in a counter.
+    setScreen("notes");
+    toast(`Saved to §6 key points · ${keyPoints.length + 1} on this report`);
   }
 
   /**
@@ -430,16 +475,17 @@ export function VisitMode({
         queuedItems={queuedItems}
       />
 
-      {screen === "home" ? (
+      {pending.length === 0 && screen === "home" ? (
         <QuickActionGrid
           counters={{ ...counters, observations: filed.length }}
           lastPhotos={lastPhotos}
           onAction={handleAction}
           onOpenPhotos={() => setScreen("photos")}
+          onOpenNotes={() => setScreen("notes")}
         />
       ) : null}
 
-      {screen === "photos" ? (
+      {pending.length === 0 && screen === "photos" ? (
         <PhotoScreen
           photos={photos}
           onBack={() => setScreen("home")}
@@ -447,22 +493,41 @@ export function VisitMode({
         />
       ) : null}
 
-      {screen === "note" ? (
+      {pending.length === 0 && screen === "notes" ? (
+        <NotesScreen
+          keyPoints={keyPoints}
+          observations={filed}
+          onWriteKeyPoints={writeKeyPoints}
+          onWriteObservations={async (next) => {
+            const result = await saveObservations(reportId, next);
+            if (!result.ok) {
+              toast(result.error.message, "error");
+              return false;
+            }
+            setFiled(result.data);
+            router.refresh();
+            return true;
+          }}
+          onAddNote={() => setScreen("note")}
+          onAddObservation={() => setScreen("observation")}
+          onBack={() => setScreen("home")}
+        />
+      ) : null}
+
+      {pending.length === 0 && screen === "note" ? (
         <NoteForm saving={saving} onCancel={() => setScreen("home")} onSave={fileNote} />
       ) : null}
 
-      {screen === "observation" ? (
+      {pending.length === 0 && screen === "observation" ? (
         <ObservationForm
-          photo={lastPhotos[0] ?? null}
           saving={saving}
-          onAttach={() => cameraRef.current?.click()}
           onCancel={() => setScreen("home")}
           onSave={fileObservation}
         />
       ) : null}
 
-      {screen === "report" ? (
-        <ReportScreen
+      {pending.length === 0 && screen === "report" ? (
+        <ReportPreview
           documentNumber={documentNumber}
           completion={completion}
           sections={sections}
@@ -485,13 +550,28 @@ export function VisitMode({
         </p>
       ) : null}
 
-      {/* The caption step. It sits over whatever screen is open, because a frame
-          the camera has returned and nobody has filed is the most urgent thing
-          on the phone — and because the camera can be opened from more than one
-          screen. */}
+      {/* The caption step takes the screen.
+          It used to be appended under whichever screen was open, which put it
+          at the bottom of a long scrolling page — under the browser's own
+          toolbar on a phone, where a tap lands on the toolbar and the button
+          appears not to work. A frame the camera has returned and nobody has
+          filed is the most urgent thing on the phone; it gets the screen. */}
       {pending.length > 0 ? (
-        <div style={{ flex: "none" }}>
-          <div style={{ padding: "0 16px 10px" }}>
+        <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
+          <div style={{ padding: "14px 16px 10px" }}>
+            <div
+              style={{
+                fontSize: 10,
+                letterSpacing: ".12em",
+                textTransform: "uppercase",
+                color: "var(--color-neutral-600)",
+                marginBottom: 7,
+              }}
+            >
+              {pending.length === 1
+                ? "1 photograph to file"
+                : `${pending.length} photographs to file`}
+            </div>
             <Select
               aria-label="Destination section"
               value={region}
@@ -511,16 +591,21 @@ export function VisitMode({
             </Select>
           </div>
 
-          <CaptionSheet
-            src={pending[0].previewUrl}
-            photoNumber={counters.photos + 1}
-            sectionLabel={IMAGE_REGION_LABELS[region]}
-            value={caption}
-            onChange={setCaption}
-            onRetake={retakeHead}
-            onAiLater={() => void fileHead(false)}
-            onSave={() => void fileHead(true)}
-          />
+          {/* Pushed to the foot of the viewport rather than to the foot of the
+              document: the two buttons stay where a thumb expects them. */}
+          <div style={{ marginTop: "auto" }}>
+            <CaptionSheet
+              src={pending[0].previewUrl}
+              photoNumber={counters.photos + 1}
+              sectionLabel={IMAGE_REGION_LABELS[region]}
+              value={caption}
+              onChange={setCaption}
+              busy={filing}
+              onRetake={retakeHead}
+              onAiLater={() => void fileHead("ai")}
+              onSave={() => void fileHead("mine")}
+            />
+          </div>
         </div>
       ) : null}
     </div>
@@ -637,12 +722,205 @@ function PhotoScreen({
 }
 
 /**
- * The read-only report screen — prototype lines 2310..2330.
+ * §6 — the notes and observations this visit has filed, and where they go.
  *
- * Document number, the completion block, the thirteen section rows with their
- * completion ticks, and the way back. Editing stays on the desktop.
+ * [INFERRED] The approved design has no such screen: Add Note and Add
+ * Observation were one-way doors that moved a counter. "I put in a note and
+ * then I do not know where it goes" is the exact complaint, and a counter that
+ * cannot be opened is what caused it. Both lists are shown here, both say which
+ * part of §6 they become, and both can be edited on the phone.
+ *
+ * Why two lists and not one: a key point is a line — a question, an answer,
+ * something said in a meeting — and the report prints them as a bullet list. An
+ * observation is a finding with a category, and the report prints those as a
+ * categorised list. Merging them would force a choice at the moment of typing
+ * and lose the category; keeping them apart only works if the screen says which
+ * is which, which is what this screen is for.
  */
-function ReportScreen({
+function NotesScreen({
+  keyPoints,
+  observations,
+  onWriteKeyPoints,
+  onWriteObservations,
+  onAddNote,
+  onAddObservation,
+  onBack,
+}: {
+  keyPoints: readonly string[];
+  observations: readonly Observation[];
+  onWriteKeyPoints: (next: readonly string[]) => Promise<boolean>;
+  onWriteObservations: (next: readonly Observation[]) => Promise<boolean>;
+  onAddNote: () => void;
+  onAddObservation: () => void;
+  onBack: () => void;
+}) {
+  // Local copies so a half-typed line is not thrown away by the refresh that
+  // follows every successful write.
+  const [points, setPoints] = useState<readonly string[]>(keyPoints);
+  const [cards, setCards] = useState<readonly Observation[]>(observations);
+  const [busy, setBusy] = useState(false);
+
+  async function commitPoints(next: readonly string[]) {
+    setPoints(next);
+    setBusy(true);
+    await onWriteKeyPoints(next.filter((line) => line.trim() !== ""));
+    setBusy(false);
+  }
+
+  async function commitCards(next: readonly Observation[]) {
+    setCards(next);
+    setBusy(true);
+    await onWriteObservations(next.filter((card) => card.text.trim() !== ""));
+    setBusy(false);
+  }
+
+  return (
+    <div style={{ padding: "14px 16px 20px", flex: 1 }}>
+      <h2
+        style={{
+          fontFamily: "var(--font-heading)",
+          fontWeight: 600,
+          fontSize: 19,
+          letterSpacing: "normal",
+          margin: "0 0 4px",
+        }}
+      >
+        §6 Visit Relevant Information
+      </h2>
+      <p style={{ fontSize: 12.5, color: "var(--color-neutral-700)", margin: "0 0 16px" }}>
+        Everything you capture on this phone lands in section 6 of the report.
+      </p>
+
+      <SubHeading>Key points · printed as a bullet list</SubHeading>
+      {points.length === 0 ? (
+        <EmptyState message="No key points yet. Add Note writes one." />
+      ) : (
+        <div className="flex flex-col" style={{ gap: 8 }}>
+          {points.map((line, index) => (
+            <Blueprint key={index} style={{ padding: 8 }}>
+              <Textarea
+                aria-label={`Key point ${index + 1}`}
+                value={line}
+                disabled={busy}
+                onChange={(event) =>
+                  setPoints((current) =>
+                    current.map((item, i) => (i === index ? event.target.value : item)),
+                  )
+                }
+                onBlur={() => void commitPoints(points)}
+                style={{ minHeight: 56, fontSize: 13.5, lineHeight: 1.5 }}
+              />
+              <Button
+                size="compact"
+                variant="secondary"
+                disabled={busy}
+                onClick={() => void commitPoints(points.filter((_, i) => i !== index))}
+                style={{ marginTop: 6, fontSize: 12 }}
+              >
+                Delete
+              </Button>
+            </Blueprint>
+          ))}
+        </div>
+      )}
+      <Button
+        onClick={onAddNote}
+        block
+        disabled={busy}
+        style={{ fontSize: 13.5, minHeight: 46, marginTop: 10, marginBottom: 22 }}
+      >
+        Add a key point
+      </Button>
+
+      <SubHeading>Observations · printed with their category</SubHeading>
+      {cards.length === 0 ? (
+        <EmptyState message="No observations yet. Add Observation writes one." />
+      ) : (
+        <div className="flex flex-col" style={{ gap: 8 }}>
+          {cards.map((card, index) => (
+            <Blueprint key={card.id || index} style={{ padding: 8 }}>
+              <div
+                style={{
+                  fontSize: 10,
+                  letterSpacing: ".12em",
+                  textTransform: "uppercase",
+                  color: "var(--color-neutral-600)",
+                  marginBottom: 5,
+                }}
+              >
+                {card.category.trim() === "" ? "No category" : card.category}
+              </div>
+              <Textarea
+                aria-label={`Observation ${index + 1}`}
+                value={card.text}
+                disabled={busy}
+                onChange={(event) =>
+                  setCards((current) =>
+                    current.map((item, i) =>
+                      i === index ? { ...item, text: event.target.value } : item,
+                    ),
+                  )
+                }
+                onBlur={() => void commitCards(cards)}
+                style={{ minHeight: 64, fontSize: 13.5, lineHeight: 1.5 }}
+              />
+              <Button
+                size="compact"
+                variant="secondary"
+                disabled={busy}
+                onClick={() => void commitCards(cards.filter((_, i) => i !== index))}
+                style={{ marginTop: 6, fontSize: 12 }}
+              >
+                Delete
+              </Button>
+            </Blueprint>
+          ))}
+        </div>
+      )}
+      <Button
+        onClick={onAddObservation}
+        block
+        disabled={busy}
+        style={{ fontSize: 13.5, minHeight: 46, marginTop: 10, marginBottom: 20 }}
+      >
+        Add an observation
+      </Button>
+
+      <Button variant="secondary" onClick={onBack} block style={{ fontSize: 14, minHeight: 48 }}>
+        Back to Visit Mode
+      </Button>
+    </div>
+  );
+}
+
+/** The 10px / .12em uppercase caption the mobile screens label a list with. */
+function SubHeading({ children }: { children: ReactNode }) {
+  return (
+    <div
+      style={{
+        font: "10px var(--font-body)",
+        letterSpacing: ".12em",
+        textTransform: "uppercase",
+        color: "var(--color-neutral-600)",
+        marginBottom: 7,
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+/**
+ * The report as it stands — prototype lines 2310..2330, with the content added.
+ *
+ * The approved screen is the document number, the completion block, the
+ * thirteen section rows and the way back. It was exactly that and nothing more,
+ * so a section could be ticked without the reader learning one thing that was
+ * written in it — "I can only see what is ticked" was the complaint, and it was
+ * fair. Each row now carries a line of what the section actually holds. Editing
+ * still stays on the desktop; this is a preview, which is what it claimed to be.
+ */
+function ReportPreview({
   documentNumber,
   completion,
   sections,
@@ -676,11 +954,7 @@ function ReportScreen({
         Read-only on mobile · complete on desktop
       </p>
 
-      <CompletionIndicator
-        value={completion}
-        label="Completion"
-        className="mb-[16px]"
-      />
+      <CompletionIndicator value={completion} label="Completion" className="mb-[16px]" />
 
       <Blueprint style={{ padding: 0, marginBottom: 16 }}>
         {sections.map((section) => (
@@ -688,9 +962,9 @@ function ReportScreen({
             key={section.id}
             style={{
               display: "flex",
-              alignItems: "center",
+              alignItems: "flex-start",
               gap: 9,
-              padding: "8px 11px",
+              padding: "9px 11px",
               borderBottom: "1px solid var(--rule-row)",
             }}
           >
@@ -701,32 +975,42 @@ function ReportScreen({
               title={section.done ? "Complete" : "Not complete"}
               style={{
                 flex: "none",
-                color: section.done
-                  ? "var(--color-accent)"
-                  : "var(--color-neutral-400)",
+                marginTop: 2,
+                color: section.done ? "var(--color-accent)" : "var(--color-neutral-400)",
               }}
             />
             <span
               style={{
                 width: 22,
                 flex: "none",
+                marginTop: 1,
                 fontSize: 11,
                 color: "var(--color-neutral-600)",
               }}
             >
               {section.number}
             </span>
-            <span style={{ flex: 1, fontSize: 12.5 }}>{section.label}</span>
+            <span style={{ flex: 1, minWidth: 0 }}>
+              <span style={{ display: "block", fontSize: 12.5 }}>{section.label}</span>
+              <span
+                style={{
+                  display: "block",
+                  marginTop: 2,
+                  fontSize: 11.5,
+                  lineHeight: 1.45,
+                  color: section.excerpt
+                    ? "var(--color-neutral-700)"
+                    : "var(--color-neutral-500)",
+                }}
+              >
+                {section.excerpt || "Empty"}
+              </span>
+            </span>
           </div>
         ))}
       </Blueprint>
 
-      <Button
-        variant="secondary"
-        onClick={onBack}
-        block
-        style={{ fontSize: 14, minHeight: 48 }}
-      >
+      <Button variant="secondary" onClick={onBack} block style={{ fontSize: 14, minHeight: 48 }}>
         Back to Visit Mode
       </Button>
     </div>

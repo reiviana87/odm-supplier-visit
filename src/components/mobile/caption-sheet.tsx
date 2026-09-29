@@ -50,8 +50,17 @@ export interface CaptionSheetProps {
   value: string;
   onChange: (value: string) => void;
   onRetake: () => void;
+  /** Store it and ask the model for a caption, which the desk then reviews. */
   onAiLater: () => void;
   onSave: () => void;
+  /**
+   * The frame is being stored.
+   *
+   * Both buttons go quiet and say what is happening. Without it a tap on a
+   * phone produces no visible change at all while the upload runs, which reads
+   * as a button that does not work.
+   */
+  busy?: boolean;
 }
 
 export function CaptionSheet({
@@ -63,6 +72,7 @@ export function CaptionSheet({
   onRetake,
   onAiLater,
   onSave,
+  busy = false,
 }: CaptionSheetProps) {
   const hasCaption = value.trim().length > 0;
 
@@ -160,16 +170,18 @@ export function CaptionSheet({
         <Button
           variant="secondary"
           onClick={onAiLater}
+          disabled={busy}
           style={{ flex: 1, fontSize: 12.5, minHeight: 44 }}
         >
-          AI caption later
+          {busy ? "Working\u2026" : "AI caption later"}
         </Button>
         <Button
           variant="primary"
           onClick={onSave}
+          disabled={busy}
           style={{ flex: 1, fontSize: 12.5, minHeight: 44 }}
         >
-          {hasCaption ? "Save caption" : "Save without caption"}
+          {busy ? "Saving\u2026" : hasCaption ? "Save caption" : "Save without caption"}
         </Button>
       </div>
     </div>

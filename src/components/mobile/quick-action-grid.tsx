@@ -78,6 +78,13 @@ export interface QuickActionGridProps {
    * user finds on their own.
    */
   onOpenPhotos: () => void;
+  /**
+   * Open the §6 screen.
+   *
+   * The Notes and Obs. counters are the affordance. A number that goes up and
+   * cannot be opened is what left the user asking where a note had gone.
+   */
+  onOpenNotes: () => void;
 }
 
 export function QuickActionGrid({
@@ -85,6 +92,7 @@ export function QuickActionGrid({
   lastPhotos,
   onAction,
   onOpenPhotos,
+  onOpenNotes,
 }: QuickActionGridProps) {
   return (
     <div style={{ padding: "14px 16px 20px", flex: 1 }}>
@@ -135,9 +143,9 @@ export function QuickActionGrid({
           marginBottom: 16,
         }}
       >
-        <Counter label="Photos" value={counters.photos} />
-        <Counter label="Notes" value={counters.notes} />
-        <Counter label="Obs." value={counters.observations} />
+        <Counter label="Photos" value={counters.photos} onOpen={onOpenPhotos} />
+        <Counter label="Notes" value={counters.notes} onOpen={onOpenNotes} />
+        <Counter label="Obs." value={counters.observations} onOpen={onOpenNotes} />
       </div>
 
       <div style={SECTION_LABEL}>Last photos</div>
@@ -182,9 +190,23 @@ export function QuickActionGrid({
   );
 }
 
-function Counter({ label, value }: { label: string; value: number }) {
+function Counter({
+  label,
+  value,
+  onOpen,
+}: {
+  label: string;
+  value: number;
+  onOpen: () => void;
+}) {
   return (
-    <Blueprint style={{ padding: "9px 10px" }}>
+    <Blueprint
+      as="button"
+      type="button"
+      onClick={onOpen}
+      aria-label={`${label}: ${value}. Open the list.`}
+      style={{ padding: "9px 10px", textAlign: "left", width: "100%", cursor: "pointer" }}
+    >
       <div style={COUNTER_LABEL}>{label}</div>
       <div
         style={{

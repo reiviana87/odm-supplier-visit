@@ -14,7 +14,6 @@ import { Field, Textarea } from "@/components/ui/field";
  *              on an accent-100 ground; painted as approved, with a transparent
  *              44px+ hit box (`.vm-hit`)
  *   text       textarea min-height 110 · 14px / 1.55
- *   photo      64×52 thumbnail beside a 46px "Attach another" button
  *   actions    Cancel (flex 1) · Save (flex 2), both 48px
  *
  * Save files the observation into §6 with its category. The form owns the two
@@ -59,42 +58,22 @@ const GROUP_LABEL: CSSProperties = {
   marginBottom: 7,
 };
 
-/** Matches `.field > label` in globals.css — used where there is no control. */
-const FIELD_LABEL: CSSProperties = {
-  display: "block",
-  fontSize: 12,
-  marginBottom: 5,
-  color: "color-mix(in srgb, var(--color-text) 70%, transparent)",
-};
-
 export interface ObservationFormProps {
-  /**
-   * The most recent photograph of the visit, or null when none has been taken.
-   *
-   * It used to be a seeded frame, so the form always showed a photograph — of
-   * another supplier's factory.
-   */
-  photo: { src: string; caption: string } | null;
   /** The write is in flight — README §5's in-progress control state. */
   saving?: boolean;
-  /** Open the camera to attach another frame. */
-  onAttach: () => void;
   onCancel: () => void;
   /** Hands the two captured fields up; the caller owns the write. */
   onSave: (values: { category: string; text: string }) => void;
 }
 
 export function ObservationForm({
-  photo,
   saving = false,
-  onAttach,
   onCancel,
   onSave,
 }: ObservationFormProps) {
   const [category, setCategory] = useState(CATEGORIES[0]);
   const [text, setText] = useState("");
   const categoryLabelId = useId();
-  const photoLabelId = useId();
 
   return (
     <div style={{ padding: "14px 16px 20px", flex: 1 }}>
@@ -167,53 +146,62 @@ export function ObservationForm({
         />
       </Field>
 
-      <div role="group" aria-labelledby={photoLabelId} style={{ marginBottom: 16 }}>
-        <div id={photoLabelId} style={FIELD_LABEL}>
-          Related photo
-        </div>
-        <div style={{ display: "flex", gap: 7, alignItems: "center" }}>
-          {photo === null ? (
-            <div
+      <div id={categoryLabelId} style={GROUP_LABEL}>
+        Category
+      </div>
+      {/* rowGap 14, not the approved 7, is the other half of `.vm-hit`: it puts
+          the wrapped rows exactly one hit box apart so the 44px targets tile
+          instead of overlapping. The column gap stays at the approved 7. */}
+      <div
+        role="group"
+        aria-labelledby={categoryLabelId}
+        style={{
+          display: "flex",
+          flexWrap: "wrap",
+          columnGap: 7,
+          rowGap: 14,
+          marginBottom: 16,
+        }}
+      >
+        {CATEGORIES.map((option) => {
+          const selected = option === category;
+          return (
+            <button
+              key={option}
+              type="button"
+              aria-pressed={selected}
+              onClick={() => setCategory(option)}
+              // `vm-hit` — the confirmed touch-target decision: the chip keeps
+              // its approved ~31px appearance and gains a transparent ±7px hit
+              // box (45px effective) instead of being enlarged. The selected
+              // chip paints its own border and ground, so it drops `vm-chip`
+              // (the hover rule) but keeps the hit area. See phone-frame.tsx.
+              className={selected ? "vm-hit" : "vm-chip vm-hit"}
               style={{
-                width: 64,
-                height: 52,
-                flex: "none",
-                display: "grid",
-                placeItems: "center",
-                fontSize: 10.5,
-                textAlign: "center",
-                lineHeight: 1.3,
-                color: "var(--color-neutral-600)",
-                background: "var(--color-neutral-100)",
-                border: "1px solid var(--color-divider)",
+                padding: "7px 12px",
+                border: `1px solid ${
+                  selected ? "var(--color-accent)" : "var(--color-divider)"
+                }`,
+                background: selected ? "var(--color-accent-100)" : "transparent",
+                font: "13px var(--font-body)",
+                color: "var(--color-text)",
+                cursor: "pointer",
               }}
             >
-              No photo
-            </div>
-          ) : (
-          /* eslint-disable-next-line @next/next/no-img-element -- stored
-              photograph behind a signed URL, no known intrinsic size. */
-            <img
-              src={photo.src}
-              alt={photo.caption}
-              style={{
-                width: 64,
-                height: 52,
-                objectFit: "cover",
-                border: "1px solid var(--color-divider)",
-                flex: "none",
-              }}
-            />
-          )}
-          <Button
-            variant="secondary"
-            onClick={onAttach}
-            style={{ fontSize: 13, minHeight: 46, flex: 1 }}
-          >
-            Attach another
-          </Button>
-        </div>
+              {option}
+            </button>
+          );
+        })}
       </div>
+
+      <Field label="Text" style={{ marginBottom: 14 }}>
+        <Textarea
+          value={text}
+          onChange={(event) => setText(event.target.value)}
+          placeholder={TEXT_PLACEHOLDER}
+          style={{ minHeight: 110, fontSize: 14, lineHeight: 1.55 }}
+        />
+      </Field>
 
       <div style={{ display: "flex", gap: 9 }}>
         <Button
