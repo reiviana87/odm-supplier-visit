@@ -68,8 +68,13 @@ const FIELD_LABEL: CSSProperties = {
 };
 
 export interface ObservationFormProps {
-  /** The photo already attached to this observation. */
-  photo: { src: string; caption: string };
+  /**
+   * The most recent photograph of the visit, or null when none has been taken.
+   *
+   * It used to be a seeded frame, so the form always showed a photograph — of
+   * another supplier's factory.
+   */
+  photo: { src: string; caption: string } | null;
   /** The write is in flight — README §5's in-progress control state. */
   saving?: boolean;
   /** Open the camera to attach another frame. */
@@ -167,19 +172,39 @@ export function ObservationForm({
           Related photo
         </div>
         <div style={{ display: "flex", gap: 7, alignItems: "center" }}>
-          {/* eslint-disable-next-line @next/next/no-img-element -- seeded photo,
-              no known intrinsic size. */}
-          <img
-            src={photo.src}
-            alt={photo.caption}
-            style={{
-              width: 64,
-              height: 52,
-              objectFit: "cover",
-              border: "1px solid var(--color-divider)",
-              flex: "none",
-            }}
-          />
+          {photo === null ? (
+            <div
+              style={{
+                width: 64,
+                height: 52,
+                flex: "none",
+                display: "grid",
+                placeItems: "center",
+                fontSize: 10.5,
+                textAlign: "center",
+                lineHeight: 1.3,
+                color: "var(--color-neutral-600)",
+                background: "var(--color-neutral-100)",
+                border: "1px solid var(--color-divider)",
+              }}
+            >
+              No photo
+            </div>
+          ) : (
+          /* eslint-disable-next-line @next/next/no-img-element -- stored
+              photograph behind a signed URL, no known intrinsic size. */
+            <img
+              src={photo.src}
+              alt={photo.caption}
+              style={{
+                width: 64,
+                height: 52,
+                objectFit: "cover",
+                border: "1px solid var(--color-divider)",
+                flex: "none",
+              }}
+            />
+          )}
           <Button
             variant="secondary"
             onClick={onAttach}

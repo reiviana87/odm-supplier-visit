@@ -11,9 +11,10 @@ import { EmptyState, EMPTY_STATE_COPY } from "@/components/ui/states";
 import { Tabs } from "@/components/ui/tabs";
 import { Input, Select, Textarea } from "@/components/ui/field";
 import { useToast } from "@/components/ui/toast";
+import { TranscriptPanel } from "@/components/reports/transcript-panel";
 import { saveObservations } from "@/lib/data/report-actions";
 import { joinQaBullets, splitQaBullets } from "@/lib/data/report-mappers";
-import { transcriptFindingCounts } from "@/lib/mock-data";
+import type { TranscriptSource } from "@/lib/data/transcript-actions";
 import type { Observation, Report } from "@/types/domain";
 
 /**
@@ -30,11 +31,16 @@ import type { Observation, Report } from "@/types/domain";
  * README §12 — "9 AI findings … · 4 already added".
  */
 
-type VisitView = "observations" | "qa" | "rich";
+type VisitView = "observations" | "qa" | "transcript" | "rich";
 
 const VIEWS: ReadonlyArray<{ id: VisitView; label: string }> = [
   { id: "observations", label: "Observations" },
-  { id: "qa", label: "Q&A" },
+  // Named for what it holds. It was "Q&A", and the bullet editor behind it —
+  // the one place §6 keeps loose points from the visit — went unfound.
+  { id: "qa", label: "Q&A / Key points" },
+  // The transcript surface used to live only in the right-hand rail, under a
+  // heading that said "Sources"; on a phone it was off-screen entirely.
+  { id: "transcript", label: "Transcript" },
   { id: "rich", label: "Rich text" },
 ];
 
@@ -50,8 +56,6 @@ const PRIORITIES: ReadonlyArray<Observation["priority"]> = [
   "High",
   "Critical",
 ];
-
-const TRANSCRIPT_PHASE = "Transcript analysis arrives in Phase 6";
 
 /**
  * A card the author opened and never typed into is not an observation — the
@@ -186,8 +190,7 @@ function ObservationCard({
   );
 }
 
-function QaBlock() {
-  const { toast } = useToast();
+function QaBlock({ onExtract }: { onExtract: () => void }) {
   // README §6.2 — §6's Q&A block is the `visit` section body, one bullet per
   // line, and the exclude control is that row's `excluded` flag.
   const { draft, setBody, setExcluded } = useSectionDraft("visit");
@@ -314,7 +317,7 @@ function QaBlock() {
                 borderColor: "var(--color-accent-300)",
                 color: "var(--color-accent-800)",
               }}
-              onClick={() => toast(TRANSCRIPT_PHASE)}
+              onClick={onExtract}
             >
               Extract from transcript
             </Button>
@@ -338,7 +341,14 @@ function QaBlock() {
   );
 }
 
-export function VisitSection({ report }: { report: Report }) {
+export function VisitSection({
+  report,
+  transcripts,
+}: {
+  report: Report;
+  /** The report's transcript sources — §6 hosts the paste field itself now. */
+  transcripts: readonly TranscriptSource[];
+}) {
   const { toast } = useToast();
   const [view, setView] = useState<VisitView>("observations");
 
@@ -408,16 +418,16 @@ export function VisitSection({ report }: { report: Report }) {
     setView("observations");
   }, [edit, observations]);
 
-  const counts = transcriptFindingCounts();
   /**
-   * The seeded findings belong to the report whose observations came from
-   * them; a report with no transcript-sourced observation has nothing to
-   * review yet, and shows the §21 empty state instead of another report's
-   * counts.
+   * How many of §6's cards came out of a transcript rather than being typed.
+   *
+   * This used to be a pair of numbers from the mock module, so every report
+   * claimed the same findings were waiting — including reports with no
+   * transcript at all.
    */
-  const hasFindings = observations.some(
+  const fromTranscript = observations.filter(
     (observation) => observation.sourceFindingId !== null,
-  );
+  ).length;
 
   return (
     <div style={{ maxWidth: 900 }}>
@@ -448,7 +458,7 @@ export function VisitSection({ report }: { report: Report }) {
             borderColor: "var(--color-accent-300)",
             color: "var(--color-accent-800)",
           }}
-          onClick={() => toast(TRANSCRIPT_PHASE)}
+          onClick={() => setView("transcript")}
         >
           Analyze Transcript
         </Button>
@@ -463,7 +473,7 @@ export function VisitSection({ report }: { report: Report }) {
 
       {view === "observations" ? (
         <>
-          {hasFindings ? (
+          {fromTranscript > 0 ? (
             <div
               className="flex items-center"
               style={{
@@ -482,33 +492,28 @@ export function VisitSection({ report }: { report: Report }) {
               <span
                 style={{ flex: 1, fontSize: 12.5, color: "var(--color-accent-900)" }}
               >
-                {counts.open} AI findings from the transcript are waiting for review ·{" "}
-                {counts.added} already added
+                {fromTranscript} of these came from a transcript
               </span>
               <Button
                 variant="primary"
                 size="compact"
                 style={{ fontSize: 11.5 }}
-                onClick={() => toast(TRANSCRIPT_PHASE)}
+                onClick={() => setView("transcript")}
               >
-                Review findings
+                Open transcript
               </Button>
             </div>
-          ) : (
+          ) : observations.length === 0 ? (
             <EmptyState
               message={EMPTY_STATE_COPY.noFindings}
               action={
-                <Button
-                  size="compact"
-                  icon="spark"
-                  onClick={() => toast(TRANSCRIPT_PHASE)}
-                >
+                <Button size="compact" icon="spark" onClick={() => setView("transcript")}>
                   Analyze Transcript
                 </Button>
               }
               className="mb-[14px]"
             />
-          )}
+          ) : null}
 
           {observations.length > 0 ? (
             <div
@@ -541,7 +546,20 @@ export function VisitSection({ report }: { report: Report }) {
         </>
       ) : null}
 
-      {view === "observations" || view === "qa" ? <QaBlock /> : null}
+      {view === "transcript" ? (
+        /* The same panel the rail carries, hosted here because this is the
+           section it belongs to — and because the rail is off the side of a
+           phone. Pasting is the point: the transcript is made elsewhere. */
+        <TranscriptPanel
+          reportId={report.id}
+          transcripts={transcripts}
+          observations={observations}
+        />
+      ) : null}
+
+      {view === "observations" || view === "qa" ? (
+        <QaBlock onExtract={() => setView("transcript")} />
+      ) : null}
     </div>
   );
 }

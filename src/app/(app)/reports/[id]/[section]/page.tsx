@@ -5,10 +5,12 @@ import { ReportEditor } from "@/components/reports/report-editor";
 import { renderSection } from "@/components/reports/sections";
 import { PageHeader, PageShell } from "@/components/ui/page-header";
 import { EmptyState } from "@/components/ui/states";
+import { listReportPhotos } from "@/lib/data/photo-actions";
 import { getReport } from "@/lib/data/reports";
 import { getSupplierCertificates } from "@/lib/data/suppliers";
 import { listTranscripts } from "@/lib/data/transcript-actions";
 import { REPORT_PHOTOS } from "@/lib/mock-data";
+import { isMockMode } from "@/lib/supabase/env";
 import { isSectionId } from "@/types/domain";
 
 /**
@@ -30,8 +32,12 @@ import { isSectionId } from "@/types/domain";
  * the visit still belongs in the report. When that read fails or returns
  * nothing, the section falls back to what the snapshot says was declared.
  *
- * Photographs are still the seeded set — they are Phase 4, and nothing in the
- * data layer serves them yet.
+ * Photographs come from `listReportPhotos`, which reads the report's own
+ * `report_images` rows and signs each stored object before handing them down.
+ * They used to be the Phase 1 seed, and the difference was not academic: the
+ * exporter read the real rows while every screen drew somebody else's visit, so
+ * a photograph taken on the phone was in the Word document and nowhere on
+ * screen. Demo mode still gets the seed, because it has no storage to read.
  */
 
 interface EditorPageProps {
@@ -75,6 +81,16 @@ export default async function ReportSectionPage({ params }: EditorPageProps) {
   // The rail lists these on every section, so they are read once here.
   const transcripts = await listTranscripts(id);
 
+  // Every region's screen is drawn from this one read — §4.1, §8.1 and §10 are
+  // the same rows filtered by region — and the navigator's caption warnings and
+  // the completion percentages are counted from it too.
+  const storedPhotos = await listReportPhotos(id);
+  const photos = isMockMode()
+    ? REPORT_PHOTOS
+    : storedPhotos.ok
+      ? storedPhotos.data
+      : [];
+
   // Only §7 draws them, so nothing else pays for the query.
   const certificates =
     section === "certificates"
@@ -85,14 +101,15 @@ export default async function ReportSectionPage({ params }: EditorPageProps) {
     <ReportEditor
       report={report}
       sections={sections}
-      photos={REPORT_PHOTOS}
+      photos={photos}
       transcripts={transcripts.ok ? transcripts.data : []}
       activeSection={section}
     >
       {renderSection(
         section,
         report,
-        REPORT_PHOTOS,
+        photos,
+        transcripts.ok ? transcripts.data : [],
         certificates?.ok ? certificates.data : undefined,
       )}
     </ReportEditor>

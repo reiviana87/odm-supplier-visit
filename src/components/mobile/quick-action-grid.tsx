@@ -70,12 +70,21 @@ export interface QuickActionGridProps {
   counters: { photos: number; notes: number; observations: number };
   lastPhotos: readonly VisitPhoto[];
   onAction: (action: QuickActionId) => void;
+  /**
+   * Open the Photos screen.
+   *
+   * The strip is the affordance rather than a seventh tile: the approved grid
+   * is six, and a row of photographs that cannot be tapped is a dead end the
+   * user finds on their own.
+   */
+  onOpenPhotos: () => void;
 }
 
 export function QuickActionGrid({
   counters,
   lastPhotos,
   onAction,
+  onOpenPhotos,
 }: QuickActionGridProps) {
   return (
     <div style={{ padding: "14px 16px 20px", flex: 1 }}>
@@ -132,29 +141,43 @@ export function QuickActionGrid({
       </div>
 
       <div style={SECTION_LABEL}>Last photos</div>
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(3, 1fr)",
-          gap: 6,
-        }}
-      >
-        {lastPhotos.map((photo) => (
-          /* eslint-disable-next-line @next/next/no-img-element -- the seeded
-             photographs are plain files with no known intrinsic size. */
-          <img
-            key={photo.id}
-            src={photo.src}
-            alt={photo.caption}
-            style={{
-              width: "100%",
-              height: 70,
-              objectFit: "cover",
-              border: "1px solid var(--color-divider)",
-            }}
-          />
-        ))}
-      </div>
+      {lastPhotos.length === 0 ? (
+        <p style={{ fontSize: 12, color: "var(--color-neutral-600)", margin: 0 }}>
+          None yet on this visit.
+        </p>
+      ) : (
+        <button
+          type="button"
+          onClick={onOpenPhotos}
+          aria-label={`Open all ${counters.photos} photographs`}
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(3, 1fr)",
+            gap: 6,
+            width: "100%",
+            padding: 0,
+            border: 0,
+            background: "none",
+            cursor: "pointer",
+          }}
+        >
+          {lastPhotos.map((photo) => (
+            /* eslint-disable-next-line @next/next/no-img-element -- stored
+               photographs behind signed URLs, no known intrinsic size. */
+            <img
+              key={photo.id}
+              src={photo.src}
+              alt={photo.caption}
+              style={{
+                width: "100%",
+                height: 70,
+                objectFit: "cover",
+                border: "1px solid var(--color-divider)",
+              }}
+            />
+          ))}
+        </button>
+      )}
     </div>
   );
 }

@@ -84,7 +84,6 @@ export function PhotoSection({
   const { toast } = useToast();
   const router = useRouter();
   const [, startAction] = useTransition();
-  const uploadRef = useRef<HTMLButtonElement>(null);
 
   const [edits, setEdits] = useState<Record<string, CaptionEdit>>({});
   const [selected, setSelected] = useState<ReadonlySet<string>>(NO_SELECTION);
@@ -160,7 +159,14 @@ export function PhotoSection({
     }));
   }, []);
 
-  /** Persist whatever is in the card's caption field. */
+  /**
+   * Persist whatever is in the card's caption field.
+   *
+   * Reached on blur, so a caption typed by hand is saved by moving on rather
+   * than by finding a button — the card has none. It used to be reachable only
+   * from Accept, which meant a hand-typed caption lived in `edits` until the
+   * next refresh threw it away.
+   */
   const handleCommitCaption = useCallback(
     async (id: string, caption: string) => {
       const result = await updatePhotoCaption(id, caption);
@@ -168,6 +174,14 @@ export function PhotoSection({
         toast(result.error.message, "error");
         return;
       }
+      // The stored row is the truth from here. Keeping the optimistic edit
+      // would mask whatever the server actually wrote.
+      setEdits((current) => {
+        if (!(id in current)) return current;
+        const next = { ...current };
+        delete next[id];
+        return next;
+      });
       router.refresh();
     },
     [router, toast],
@@ -394,6 +408,7 @@ export function PhotoSection({
             showDragHandle={reorderable}
             selected={selected.has(photo.id)}
             onCaptionChange={handleCaptionChange}
+            onCommitCaption={handleCommitCaption}
             onAcceptCaption={handleAcceptCaption}
             onAction={handleCardAction}
           />
@@ -449,7 +464,7 @@ export function PhotoSection({
         awaitingReview={awaitingReview}
         selectedCount={selected.size}
         allSelected={selected.size > 0 && selected.size === items.length}
-        onUpload={() => uploadRef.current?.click()}
+        uploadSlot={uploadButton}
         onGenerateAll={handleGenerateAllCaptions}
         onToggleSelectAll={toggleSelectAll}
         onArrange={() => toast(PHASE.arrange)}

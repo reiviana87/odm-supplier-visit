@@ -28,14 +28,23 @@ import { Field, Textarea } from "@/components/ui/field";
 const NOTE_PLACEHOLDER = "Anything you do not want to lose before the desktop…";
 
 const NOTE_HINT =
-  "Notes are attached to the report as a source file. AI can draft sections from them later.";
+  "Saved as a key point in §6 Visit Relevant Information, where it can be edited at a desk.";
 
 export interface NoteFormProps {
   onCancel: () => void;
-  onSave: () => void;
+  /**
+   * The text itself, which the caller writes.
+   *
+   * It used to take nothing: the note lived in this component's state, Save
+   * moved a counter, and what the user typed standing in a factory was thrown
+   * away. Handing the text up is the whole fix.
+   */
+  onSave: (text: string) => void;
+  /** The write is in flight — README §5's in-progress control state. */
+  saving?: boolean;
 }
 
-export function NoteForm({ onCancel, onSave }: NoteFormProps) {
+export function NoteForm({ onCancel, onSave, saving = false }: NoteFormProps) {
   const [text, setText] = useState("");
 
   return (
@@ -71,10 +80,11 @@ export function NoteForm({ onCancel, onSave }: NoteFormProps) {
         </Button>
         <Button
           variant="primary"
-          onClick={onSave}
+          onClick={() => onSave(text)}
+          disabled={saving}
           style={{ fontSize: 14, minHeight: 48, flex: 2 }}
         >
-          Save note
+          {saving ? "Saving…" : "Save note"}
         </Button>
       </div>
     </div>

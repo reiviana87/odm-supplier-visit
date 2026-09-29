@@ -1,49 +1,66 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 
 import { Blueprint } from "@/components/ui/blueprint";
 import { Button } from "@/components/ui/button";
+import { Select, Textarea } from "@/components/ui/field";
 import { Icon } from "@/components/ui/icon";
 import { CompletionIndicator } from "@/components/ui/progress";
+import { EmptyState } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
-import { uploadReportPhoto } from "@/lib/data/photo-actions";
+import { updatePhotoCaption, uploadReportPhoto } from "@/lib/data/photo-actions";
+import {
+  getSectionRecord,
+  saveObservations,
+  saveSection,
+} from "@/lib/data/report-actions";
+import { joinQaBullets, splitQaBullets } from "@/lib/data/report-mappers";
 import { prepareImage } from "@/lib/photos/prepare-image";
-import { saveObservations } from "@/lib/data/report-actions";
-import type { Observation, ReportStatus, SectionId } from "@/types/domain";
+import {
+  IMAGE_REGIONS,
+  IMAGE_REGION_LABELS,
+  type ImageRegion,
+  type Observation,
+  type ReportPhoto,
+  type ReportStatus,
+  type SectionId,
+} from "@/types/domain";
 
-import { CameraScreen } from "./camera-screen";
+import { CaptionSheet } from "./caption-sheet";
 import { NoteForm } from "./note-form";
 import { ObservationForm } from "./observation-form";
-import {
-  QuickActionGrid,
-  type QuickActionId,
-  type VisitPhoto,
-} from "./quick-action-grid";
+import { QuickActionGrid, type QuickActionId } from "./quick-action-grid";
 import { VisitHeader } from "./visit-header";
 
 /**
  * Mobile Visit Mode — README §17, prototype lines 2186..2333.
  *
- * Five screens: home · camera · note · observation · report. Navigation
- * between them is local component state, exactly as the prototype does it —
- * they are not routes, and the home grid is the only navigation (README §17:
- * "Bottom navigation — not used; the home grid is the navigation").
+ * Five screens: home · photos · note · observation · report. Navigation between
+ * them is local component state, exactly as the prototype does it — they are not
+ * routes, and the home grid is the only navigation (README §17: "Bottom
+ * navigation — not used; the home grid is the navigation").
  *
  * What is real, and what is still not, stated plainly rather than faked:
+ *   · photographs ARE stored — Take Photo opens the phone's own camera, the
+ *     frame is shrunk and converted in the browser, a caption can be typed
+ *     before it is sent, and Photos shows what this visit actually holds;
  *   · observations ARE persisted — Save writes the §6 list through
  *     `saveObservations` and the counter is the length of what came back;
- *   · camera hardware is not Phase 2 — the viewfinder shows a seeded photo and
- *     the shutter advances the local flow (see camera-screen.tsx);
- *   · offline sync is not Phase 2 — the weak-signal banner is real UI, the
- *     queue count behind it is seeded, and nothing is stored or replayed;
- *   · file upload and voice / transcript capture are not Phase 2 — their tiles
- *     say which phase they land in instead of pretending to work;
- *   · a photo or a note save still only moves the local counter and reports it.
- *     There is no capture store behind either one yet.
+ *   · notes ARE persisted — a Quick Note becomes one of §6's key points, which
+ *     is what "something I do not want to lose before the desktop" meant;
+ *   · offline sync is not built — the weak-signal banner is real UI, nothing is
+ *     queued or replayed, and the count beside it now says zero rather than
+ *     inventing a depth;
+ *   · voice capture is not built — its tile says so instead of pretending.
+ *
+ * There is no mock viewfinder any more. `capture="environment"` hands the
+ * phone's own camera back as a file, which is both simpler and the thing that
+ * works; the caption sheet then sits over the grid until each frame is filed.
  */
 
-export type VisitScreen = "home" | "camera" | "note" | "observation" | "report";
+export type VisitScreen = "home" | "photos" | "note" | "observation" | "report";
 
 /** One navigator row of the read-only report screen. */
 export interface VisitSectionRow {
@@ -54,6 +71,23 @@ export interface VisitSectionRow {
   done: boolean;
 }
 
+/**
+ * A frame the camera has returned that nobody has filed yet.
+ *
+ * It is held here, un-uploaded, for exactly as long as the caption sheet is
+ * open. That is the whole reason the queue exists: a caption typed while
+ * standing in front of the machine is worth more than one written from memory
+ * at a desk, and it cannot be typed after the upload has already happened.
+ */
+interface PendingPhoto {
+  file: File;
+  width: number;
+  height: number;
+  capturedAt: string | null;
+  /** Object URL for the sheet's thumbnail; revoked when the frame is filed. */
+  previewUrl: string;
+}
+
 export interface VisitModeProps {
   /** The open visit every capture is filed against. */
   reportId: string;
@@ -61,16 +95,17 @@ export interface VisitModeProps {
   /** e.g. "Factory Visit · Aug 12 · 10:32". */
   visitLine: string;
   status: ReportStatus;
-  /** Seeded offline-queue depth shown in the header banner. */
+  /** Offline-queue depth shown in the header banner. */
   queuedItems: number;
   documentNumber: string;
   /** 0–100, derived from the section predicates. */
   completion: number;
   sections: readonly VisitSectionRow[];
   /**
-   * Seeded: photo and note capture have no store yet. The third counter is
-   * derived from `observations` instead of being passed, so the number on the
-   * home screen cannot disagree with the list it counts.
+   * Counted from the report, not held here: photographs are `report_images`
+   * rows and notes are §6's key points. The third counter is derived from
+   * `observations` instead of being passed, so the number on the home screen
+   * cannot disagree with the list it counts.
    */
   counters: { photos: number; notes: number };
   /**
@@ -78,11 +113,10 @@ export interface VisitModeProps {
    * set, so the write needs the rows it must keep, not only the new one.
    */
   observations: readonly Observation[];
-  lastPhotos: readonly VisitPhoto[];
-  /** The frame standing in for the live viewfinder. */
-  viewfinder: VisitPhoto;
-  /** The photo already attached to the quick observation. */
-  observationPhoto: VisitPhoto;
+  /** Every stored photograph, in print order — what the Photos screen shows. */
+  photos: readonly ReportPhoto[];
+  /** The six most recent, for the home strip. */
+  lastPhotos: readonly ReportPhoto[];
 }
 
 /**
@@ -109,68 +143,173 @@ export function VisitMode({
   sections,
   counters,
   observations,
+  photos,
   lastPhotos,
-  viewfinder,
-  observationPhoto,
 }: VisitModeProps) {
   const { toast } = useToast();
+  const router = useRouter();
   const [screen, setScreen] = useState<VisitScreen>("home");
   const cameraRef = useRef<HTMLInputElement>(null);
   const libraryRef = useRef<HTMLInputElement>(null);
-  const [uploading, setUploading] = useState(0);
+  const [preparing, setPreparing] = useState(0);
 
-  const [tally, setTally] = useState(counters);
+  const [pending, setPending] = useState<readonly PendingPhoto[]>([]);
+  const [caption, setCaption] = useState("");
+  const [region, setRegion] = useState<ImageRegion>("APPENDIX_IMAGES");
+  const [filing, setFiling] = useState(false);
+
   const [filed, setFiled] = useState<readonly Observation[]>(observations);
   const [saving, setSaving] = useState(false);
 
   /**
-   * Field photographs go straight to the appendix — §8's other two regions are
-   * editorial choices made at a desk, and a phone in a factory is not the place
-   * to make them.
+   * Prepare the frames the camera returned, and stop.
+   *
+   * Nothing is uploaded here. Each file is shrunk and converted — a phone
+   * photograph is several times larger than one request may carry and many
+   * times more detailed than the page can print — and then queued for the
+   * caption sheet, which is what actually sends it.
    */
-  const sendPhotos = useCallback(
+  const queuePhotos = useCallback(
     async (files: FileList | null) => {
       if (!files || files.length === 0) return;
       const list = Array.from(files);
-      setUploading(list.length);
+      setPreparing(list.length);
 
-      let stored = 0;
+      const prepared: PendingPhoto[] = [];
       let firstError: string | null = null;
 
       for (const file of list) {
-        // Shrunk and converted before it leaves the phone: a photograph
-        // straight off an iPhone is larger than one upload request may carry,
-        // in a format Word cannot place, and on factory wifi every megabyte
-        // that does not have to be sent is a megabyte that cannot time out.
-        const prepared = await prepareImage(file);
-        if (!prepared) {
+        const image = await prepareImage(file);
+        if (!image) {
           if (!firstError) firstError = cannotRead(file);
           continue;
         }
-
-        const result = await uploadReportPhoto({
-          reportId,
-          region: "APPENDIX_IMAGES",
-          fileName: prepared.file.name,
-          mimeType: prepared.file.type || "image/jpeg",
-          width: prepared.width,
-          height: prepared.height,
+        prepared.push({
+          file: image.file,
+          width: image.width,
+          height: image.height,
           capturedAt: file.lastModified ? new Date(file.lastModified).toISOString() : null,
-          file: prepared.file,
+          previewUrl: URL.createObjectURL(image.file),
         });
-        if (result.ok) stored += 1;
-        else if (!firstError) firstError = result.error.message;
       }
 
-      setUploading(0);
-      if (stored > 0) {
-        setTally((current) => ({ ...current, photos: current.photos + stored }));
-        toast(`${stored} photograph${stored === 1 ? "" : "s"} uploaded to the appendix.`);
-      }
+      setPreparing(0);
       if (firstError) toast(firstError, "error");
+      if (prepared.length > 0) {
+        setCaption("");
+        setPending((current) => [...current, ...prepared]);
+      }
     },
-    [reportId, toast],
+    [toast],
   );
+
+  /**
+   * File the frame at the head of the queue.
+   *
+   * The caption is written in a second call rather than as part of the upload:
+   * `uploadReportPhoto` hands back the new row id, and `updatePhotoCaption`
+   * already exists and already records that the words are the author's and not
+   * the model's. A caption that fails to save does not cost the photograph —
+   * by then it is stored, and the sentence says which of the two happened.
+   */
+  const fileHead = useCallback(
+    async (withCaption: boolean) => {
+      const head = pending[0];
+      if (!head || filing) return;
+
+      setFiling(true);
+      const result = await uploadReportPhoto({
+        reportId,
+        region,
+        fileName: head.file.name,
+        mimeType: head.file.type || "image/jpeg",
+        width: head.width,
+        height: head.height,
+        capturedAt: head.capturedAt,
+        file: head.file,
+      });
+
+      if (!result.ok) {
+        setFiling(false);
+        toast(result.error.message, "error");
+        return;
+      }
+
+      const text = caption.trim();
+      if (withCaption && text !== "") {
+        const captioned = await updatePhotoCaption(result.data.id, text);
+        if (!captioned.ok) {
+          toast(`Photograph saved, but its caption did not: ${captioned.error.message}`, "warning");
+        }
+      }
+
+      URL.revokeObjectURL(head.previewUrl);
+      setPending((current) => current.slice(1));
+      setCaption("");
+      setFiling(false);
+      router.refresh();
+
+      toast(
+        withCaption && text !== ""
+          ? `Filed under ${IMAGE_REGION_LABELS[region]} with your caption.`
+          : `Filed under ${IMAGE_REGION_LABELS[region]} — caption still to write.`,
+      );
+    },
+    [caption, filing, pending, region, reportId, router, toast],
+  );
+
+  /** Drop the head of the queue without storing it, and open the camera again. */
+  const retakeHead = useCallback(() => {
+    const head = pending[0];
+    if (head) URL.revokeObjectURL(head.previewUrl);
+    setPending((current) => current.slice(1));
+    setCaption("");
+    cameraRef.current?.click();
+  }, [pending]);
+
+  /**
+   * A Quick Note becomes one of §6's key points.
+   *
+   * It used to become nothing at all: the text sat in the form's own state, the
+   * counter moved, and the note was gone. Key points are the right home for it —
+   * already one bullet per line on the `visit` row, already exported, already
+   * editable at a desk. The row is re-read immediately before the write so the
+   * version is the current one rather than whatever the phone loaded when the
+   * visit started.
+   */
+  async function fileNote(text: string) {
+    const note = text.trim();
+    if (note === "") {
+      toast("Write the note before saving it.", "warning");
+      return;
+    }
+
+    setSaving(true);
+    const record = await getSectionRecord(reportId, "visit");
+    if (!record.ok) {
+      setSaving(false);
+      toast(record.error.message, "error");
+      return;
+    }
+
+    const bullets = [...splitQaBullets(record.data.body), note];
+    const result = await saveSection({
+      reportId,
+      sectionId: "visit",
+      body: joinQaBullets(bullets),
+      version: record.data.version,
+    });
+    setSaving(false);
+
+    if (!result.ok) {
+      toast(result.error.message, "error");
+      return;
+    }
+
+    setScreen("home");
+    router.refresh();
+    toast(`Note saved to §6 key points · ${bullets.length} on this report`);
+  }
 
   /**
    * File one observation into §6.
@@ -224,12 +363,9 @@ export function VisitMode({
   function handleAction(action: QuickActionId) {
     switch (action) {
       case "photo":
-        // The real camera, not the mocked viewfinder: `capture` hands the OS
+        // The real camera, not a mocked viewfinder: `capture` hands the OS
         // camera straight back as a file, which is the whole flow on a phone.
-        if (uploading > 0) {
-          toast(`Still uploading ${uploading} photograph${uploading === 1 ? "" : "s"}…`);
-          return;
-        }
+        if (preparing > 0) return;
         cameraRef.current?.click();
         return;
       case "note":
@@ -242,10 +378,7 @@ export function VisitMode({
         setScreen("report");
         return;
       case "upload":
-        if (uploading > 0) {
-          toast(`Still uploading ${uploading} photograph${uploading === 1 ? "" : "s"}…`);
-          return;
-        }
+        if (preparing > 0) return;
         libraryRef.current?.click();
         return;
       case "voice":
@@ -274,18 +407,18 @@ export function VisitMode({
         capture="environment"
         hidden
         onChange={(event) => {
-          void sendPhotos(event.target.files);
+          void queuePhotos(event.target.files);
           event.target.value = "";
         }}
       />
       <input
         ref={libraryRef}
         type="file"
-        accept="image/jpeg,image/png,image/webp"
+        accept="image/*"
         multiple
         hidden
         onChange={(event) => {
-          void sendPhotos(event.target.files);
+          void queuePhotos(event.target.files);
           event.target.value = "";
         }}
       />
@@ -299,40 +432,30 @@ export function VisitMode({
 
       {screen === "home" ? (
         <QuickActionGrid
-          counters={{ ...tally, observations: filed.length }}
+          counters={{ ...counters, observations: filed.length }}
           lastPhotos={lastPhotos}
           onAction={handleAction}
+          onOpenPhotos={() => setScreen("photos")}
         />
       ) : null}
 
-      {screen === "camera" ? (
-        <CameraScreen
-          src={viewfinder.src}
-          todayCount={tally.photos}
-          onPhotoSaved={() =>
-            setTally((current) => ({ ...current, photos: current.photos + 1 }))
-          }
-          onExit={() => setScreen("home")}
+      {screen === "photos" ? (
+        <PhotoScreen
+          photos={photos}
+          onBack={() => setScreen("home")}
+          onCaptioned={() => router.refresh()}
         />
       ) : null}
 
       {screen === "note" ? (
-        <NoteForm
-          onCancel={() => setScreen("home")}
-          onSave={() => {
-            const notes = tally.notes + 1;
-            setTally((current) => ({ ...current, notes }));
-            setScreen("home");
-            toast(`Note saved · ${notes} notes today`);
-          }}
-        />
+        <NoteForm saving={saving} onCancel={() => setScreen("home")} onSave={fileNote} />
       ) : null}
 
       {screen === "observation" ? (
         <ObservationForm
-          photo={observationPhoto}
+          photo={lastPhotos[0] ?? null}
           saving={saving}
-          onAttach={() => setScreen("camera")}
+          onAttach={() => cameraRef.current?.click()}
           onCancel={() => setScreen("home")}
           onSave={fileObservation}
         />
@@ -346,6 +469,169 @@ export function VisitMode({
           onBack={() => setScreen("home")}
         />
       ) : null}
+
+      {preparing > 0 ? (
+        <p
+          role="status"
+          style={{
+            margin: 0,
+            padding: "10px 16px",
+            fontSize: 12.5,
+            borderTop: "1px solid var(--color-divider)",
+            color: "var(--color-neutral-700)",
+          }}
+        >
+          Preparing {preparing} photograph{preparing === 1 ? "" : "s"}…
+        </p>
+      ) : null}
+
+      {/* The caption step. It sits over whatever screen is open, because a frame
+          the camera has returned and nobody has filed is the most urgent thing
+          on the phone — and because the camera can be opened from more than one
+          screen. */}
+      {pending.length > 0 ? (
+        <div style={{ flex: "none" }}>
+          <div style={{ padding: "0 16px 10px" }}>
+            <Select
+              aria-label="Destination section"
+              value={region}
+              disabled={filing}
+              onChange={(event) => setRegion(event.target.value as ImageRegion)}
+              // The one control that cannot meet the 44px touch target
+              // invisibly: a native <select> renders no ::after and a
+              // transparent wrapper cannot open its popup, so the box itself
+              // grows (README §24).
+              style={{ fontSize: 12.5, minHeight: 44 }}
+            >
+              {IMAGE_REGIONS.map((option) => (
+                <option key={option} value={option}>
+                  Section · {IMAGE_REGION_LABELS[option]}
+                </option>
+              ))}
+            </Select>
+          </div>
+
+          <CaptionSheet
+            src={pending[0].previewUrl}
+            photoNumber={counters.photos + 1}
+            sectionLabel={IMAGE_REGION_LABELS[region]}
+            value={caption}
+            onChange={setCaption}
+            onRetake={retakeHead}
+            onAiLater={() => void fileHead(false)}
+            onSave={() => void fileHead(true)}
+          />
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * Photos — what this visit has actually stored, and where a caption gets typed.
+ *
+ * [INFERRED] The approved design has no such screen: the prototype's home strip
+ * is six thumbnails with nowhere to go. But a photograph that cannot be looked
+ * at on the phone that took it, and a caption that can only be written at a desk
+ * days later, are not what a factory floor needs. Built from the screens beside
+ * it rather than from anything new — the report screen's padding and type, the
+ * caption sheet's textarea.
+ */
+function PhotoScreen({
+  photos,
+  onBack,
+  onCaptioned,
+}: {
+  photos: readonly ReportPhoto[];
+  onBack: () => void;
+  onCaptioned: () => void;
+}) {
+  const { toast } = useToast();
+  // Keyed by photo id: what the user has typed but not yet committed. What is
+  // stored stays the source of truth for every card not being edited.
+  const [edits, setEdits] = useState<Record<string, string>>({});
+
+  // Newest first — during a visit the useful end is what was just taken, which
+  // is the opposite of the appendix print order these arrive in.
+  const newestFirst = [...photos].reverse();
+
+  async function commit(photo: ReportPhoto, next: string) {
+    if (next.trim() === photo.caption.trim()) return;
+    const result = await updatePhotoCaption(photo.id, next.trim());
+    if (!result.ok) {
+      toast(result.error.message, "error");
+      return;
+    }
+    toast("Caption saved.");
+    onCaptioned();
+  }
+
+  return (
+    <div style={{ padding: "14px 16px 20px", flex: 1 }}>
+      <h2
+        style={{
+          fontFamily: "var(--font-heading)",
+          fontWeight: 600,
+          fontSize: 19,
+          letterSpacing: "normal",
+          margin: "0 0 4px",
+        }}
+      >
+        Photos
+      </h2>
+      <p style={{ fontSize: 12.5, color: "var(--color-neutral-700)", margin: "0 0 14px" }}>
+        {photos.length} on this visit · the caption here is the one the report prints
+      </p>
+
+      {photos.length === 0 ? (
+        <EmptyState message="No photographs yet. Take Photo files one straight into the report." />
+      ) : (
+        <div className="flex flex-col" style={{ gap: 14, marginBottom: 16 }}>
+          {newestFirst.map((photo) => (
+            <Blueprint key={photo.id} style={{ padding: 10 }}>
+              {/* eslint-disable-next-line @next/next/no-img-element -- stored
+                  photograph behind a signed URL, no known intrinsic size. */}
+              <img
+                src={photo.src}
+                alt={photo.caption || "Stored photograph, no caption yet"}
+                style={{
+                  width: "100%",
+                  maxHeight: 260,
+                  objectFit: "contain",
+                  background: "var(--color-neutral-100)",
+                  display: "block",
+                  marginBottom: 8,
+                }}
+              />
+              <div
+                style={{
+                  fontSize: 10,
+                  letterSpacing: ".12em",
+                  textTransform: "uppercase",
+                  color: "var(--color-neutral-600)",
+                  marginBottom: 5,
+                }}
+              >
+                {IMAGE_REGION_LABELS[photo.region]}
+              </div>
+              <Textarea
+                aria-label="Caption"
+                value={edits[photo.id] ?? photo.caption}
+                placeholder="Type a caption — or leave it for the AI at the desk"
+                onChange={(event) =>
+                  setEdits((current) => ({ ...current, [photo.id]: event.target.value }))
+                }
+                onBlur={(event) => void commit(photo, event.target.value)}
+                style={{ minHeight: 60, fontSize: 13, lineHeight: 1.45 }}
+              />
+            </Blueprint>
+          ))}
+        </div>
+      )}
+
+      <Button variant="secondary" onClick={onBack} block style={{ fontSize: 14, minHeight: 48 }}>
+        Back to Visit Mode
+      </Button>
     </div>
   );
 }

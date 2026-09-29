@@ -18,8 +18,9 @@ import { Textarea } from "@/components/ui/field";
  *   actions   two 44px buttons — "AI caption later" then the save button,
  *             which reads "Save without caption" while the field is empty
  *
- * Saving returns to the viewfinder for the next shot; that transition is owned
- * by `CameraScreen`.
+ * Saving stores the frame and moves to the next one in the queue; that
+ * transition is owned by `VisitMode`, which holds the captured frames until
+ * each has been filed.
  *
  * The caption field carries no visible `<label>`: the approved sheet labels it
  * with the two lines above the control instead, so the accessible name is

@@ -1,6 +1,6 @@
 "use client";
 
-import type { CSSProperties } from "react";
+import type { CSSProperties, ReactNode } from "react";
 
 import { Tag } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -27,7 +27,15 @@ export interface PhotoToolbarProps {
   awaitingReview: number;
   selectedCount: number;
   allSelected: boolean;
-  onUpload: () => void;
+  /**
+   * The upload control itself, not a callback.
+   *
+   * This used to be `onUpload: () => void`, wired to `uploadRef.current?.click()`
+   * against a ref that was never attached to anything — so the button did
+   * nothing, in every region. Handing the live control down removes the
+   * indirection rather than repairing it.
+   */
+  uploadSlot: ReactNode;
   onGenerateAll: () => void;
   onToggleSelectAll: () => void;
   onArrange: () => void;
@@ -62,7 +70,7 @@ export function PhotoToolbar({
   awaitingReview,
   selectedCount,
   allSelected,
-  onUpload,
+  uploadSlot,
   onGenerateAll,
   onToggleSelectAll,
   onArrange,
@@ -76,9 +84,7 @@ export function PhotoToolbar({
       className="flex flex-wrap items-center"
       style={{ gap: 8, marginBottom: 12 }}
     >
-      <Button icon="upload" style={TOOLBAR_BUTTON} onClick={onUpload}>
-        Upload Images
-      </Button>
+      {uploadSlot}
       <Button icon="spark" style={AI_BUTTON} onClick={onGenerateAll}>
         Generate all captions
       </Button>

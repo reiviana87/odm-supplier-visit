@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 
 import { PhotoSection } from "@/components/photos/photo-section";
+import type { TranscriptSource } from "@/lib/data/transcript-actions";
 import {
   SECTIONS,
   type ImageRegion,
@@ -79,6 +80,7 @@ function sectionBody(
   report: Report,
   photos: readonly ReportPhoto[],
   certificates: readonly SupplierCertificate[] | undefined,
+  transcripts: readonly TranscriptSource[],
 ): ReactNode {
   switch (sectionId) {
     case "general":
@@ -96,7 +98,7 @@ function sectionBody(
     case "target":
       return <TargetSection report={report} />;
     case "visit":
-      return <VisitSection report={report} />;
+      return <VisitSection report={report} transcripts={transcripts} />;
     case "certificates":
       return <CertificatesSection report={report} certificates={certificates} />;
     case "conclusion":
@@ -120,6 +122,7 @@ export function renderSection(
   sectionId: SectionId,
   report: Report,
   photos: readonly ReportPhoto[],
+  transcripts: readonly TranscriptSource[],
   certificates?: readonly SupplierCertificate[],
 ): ReactNode {
   const definition =
@@ -127,7 +130,7 @@ export function renderSection(
 
   return (
     <SectionFrame number={definition.number} title={definition.label}>
-      {sectionBody(sectionId, report, photos, certificates)}
+      {sectionBody(sectionId, report, photos, certificates, transcripts)}
     </SectionFrame>
   );
 }

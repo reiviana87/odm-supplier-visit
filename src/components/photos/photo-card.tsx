@@ -1,6 +1,6 @@
 "use client";
 
-import type { CSSProperties } from "react";
+import { useState, type CSSProperties } from "react";
 
 import { Blueprint } from "@/components/ui/blueprint";
 import { Button, IconButton } from "@/components/ui/button";
@@ -42,6 +42,11 @@ export interface PhotoCardProps {
   /** README §4 — selected is a 2px accent outline drawn inside the frame. */
   selected?: boolean;
   onCaptionChange: (id: string, caption: string) => void;
+  /**
+   * Save what is in the caption field. Fired on blur, because the approved card
+   * has no save button — moving on is the gesture.
+   */
+  onCommitCaption: (id: string, caption: string) => void;
   onAcceptCaption: (id: string) => void;
   onAction: (action: PhotoCardAction, photo: ReportPhoto) => void;
 }
@@ -135,14 +140,21 @@ export function PhotoCard({
   showDragHandle = false,
   selected = false,
   onCaptionChange,
+  onCommitCaption,
   onAcceptCaption,
   onAction,
 }: PhotoCardProps) {
+  // Set by "Write my own", which drops a card holding an AI proposal into the
+  // ordinary caption field. README §11 says a proposal must be accepted before
+  // it becomes the caption; it does not say the author may not write their own
+  // instead, and without this they could not.
+  const [editing, setEditing] = useState(false);
   const label = String(index).padStart(2, "0");
   const uploading = photo.uploadState === "uploading";
   const failed = photo.uploadState === "failed";
   const hasCaption = photo.caption.trim().length > 0;
   const suggested =
+    !editing &&
     !uploading &&
     !failed &&
     photo.captionState === "suggested" &&
@@ -297,6 +309,20 @@ export function PhotoCard({
               >
                 Analyze
               </Button>
+              <Button
+                variant="secondary"
+                size="compact"
+                onClick={() => {
+                  // Start from the proposal rather than from nothing: the
+                  // author is usually correcting a word, not rejecting the
+                  // sentence.
+                  onCaptionChange(photo.id, photo.caption.trim() || photo.aiCaption);
+                  setEditing(true);
+                }}
+                style={ACTION_BUTTON}
+              >
+                Write my own
+              </Button>
             </div>
           </div>
         ) : (
@@ -305,6 +331,7 @@ export function PhotoCard({
               compact
               value={photo.caption}
               onChange={(event) => onCaptionChange(photo.id, event.target.value)}
+              onBlur={(event) => onCommitCaption(photo.id, event.target.value)}
               aria-label={`Caption for image ${label}`}
               placeholder="Caption required for export…"
               style={CAPTION_TEXTAREA}
