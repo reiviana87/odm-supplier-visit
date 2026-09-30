@@ -137,6 +137,18 @@ export function NoteForm({
         onDelete={(index) => void replace(points.filter((_, i) => i !== index))}
         emptyMessage="Nothing yet. What you write above lands here."
       />
+
+      {/* The way out, at the end rather than only at the top: the list above is
+          as long as the visit is, and Cancel scrolls off it. Same label and
+          same 48px as the Photos screen, because it is the same journey. */}
+      <Button
+        variant="secondary"
+        onClick={onCancel}
+        block
+        style={{ fontSize: 14, minHeight: 48, marginTop: 20 }}
+      >
+        Back to Visit Mode
+      </Button>
     </div>
   );
 }
