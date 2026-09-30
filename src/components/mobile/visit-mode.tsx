@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef, useState, type ReactNode } from "react";
+import { useCallback, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { Blueprint } from "@/components/ui/blueprint";
@@ -17,7 +17,7 @@ import {
   saveObservations,
   saveSection,
 } from "@/lib/data/report-actions";
-import { joinQaBullets } from "@/lib/data/report-mappers";
+import { joinQaBullets, splitQaBullets } from "@/lib/data/report-mappers";
 import { prepareImage } from "@/lib/photos/prepare-image";
 import {
   IMAGE_REGIONS,
@@ -61,13 +61,7 @@ import { VisitHeader } from "./visit-header";
  * works; the caption sheet then sits over the grid until each frame is filed.
  */
 
-export type VisitScreen =
-  | "home"
-  | "photos"
-  | "notes"
-  | "note"
-  | "observation"
-  | "report";
+export type VisitScreen = "home" | "photos" | "note" | "observation" | "report";
 
 /** One navigator row of the read-only report screen. */
 export interface VisitSectionRow {
@@ -325,6 +319,21 @@ export function VisitMode({
     [reportId, router, toast],
   );
 
+  /** Replace §6's observation cards. */
+  const writeObservations = useCallback(
+    async (next: readonly Observation[]): Promise<boolean> => {
+      const result = await saveObservations(reportId, next);
+      if (!result.ok) {
+        toast(result.error.message, "error");
+        return false;
+      }
+      setFiled(result.data);
+      router.refresh();
+      return true;
+    },
+    [reportId, router, toast],
+  );
+
   /**
    * A Quick Note becomes one of §6's key points.
    *
@@ -343,13 +352,21 @@ export function VisitMode({
     }
 
     setSaving(true);
-    const saved = await writeKeyPoints([...keyPoints, note]);
+    // Appended to what the row holds now, not to the `keyPoints` prop: the prop
+    // only catches up after `router.refresh()`, so two notes written quickly in
+    // a row would see the same list and the first would be overwritten.
+    const record = await getSectionRecord(reportId, "visit");
+    if (!record.ok) {
+      setSaving(false);
+      toast(record.error.message, "error");
+      return;
+    }
+    const saved = await writeKeyPoints([...splitQaBullets(record.data.body), note]);
     setSaving(false);
     if (!saved) return;
 
-    // Straight to the list, so the answer to "where did that go?" is the next
-    // thing on screen rather than a number in a counter.
-    setScreen("notes");
+    // Deliberately stays on the screen: the answer to "where did that go?" is
+    // the list underneath, which the note has just joined.
     toast(`Saved to §6 key points · ${keyPoints.length + 1} on this report`);
   }
 
@@ -398,7 +415,6 @@ export function VisitMode({
     }
 
     setFiled(result.data);
-    setScreen("home");
     toast(`Observation saved to §6 · ${result.data.length} on this report`);
   }
 
@@ -440,13 +456,16 @@ export function VisitMode({
         flexDirection: "column",
       }}
     >
-      {/* One picker per affordance: `capture` opens the camera, the other the
-          photo library. Hidden, because the approved grid is the UI. */}
+      {/* Take Photo used to force the camera with `capture`, which meant a
+          photograph already on the phone could only be reached through Upload
+          File. Without the attribute iOS offers the choice itself — Take Photo,
+          Photo Library, Choose File — which is what the tile should have done
+          from the start. Upload File keeps `multiple`, for filing a batch at
+          the end of a visit. Hidden, because the approved grid is the UI. */}
       <input
         ref={cameraRef}
         type="file"
         accept="image/*"
-        capture="environment"
         hidden
         onChange={(event) => {
           void queuePhotos(event.target.files);
@@ -473,7 +492,8 @@ export function VisitMode({
           lastPhotos={lastPhotos}
           onAction={handleAction}
           onOpenPhotos={() => setScreen("photos")}
-          onOpenNotes={() => setScreen("notes")}
+          onOpenNotes={() => setScreen("note")}
+          onOpenObservations={() => setScreen("observation")}
         />
       ) : null}
 
@@ -485,33 +505,20 @@ export function VisitMode({
         />
       ) : null}
 
-      {pending.length === 0 && screen === "notes" ? (
-        <NotesScreen
-          keyPoints={keyPoints}
-          observations={filed}
-          onWriteKeyPoints={writeKeyPoints}
-          onWriteObservations={async (next) => {
-            const result = await saveObservations(reportId, next);
-            if (!result.ok) {
-              toast(result.error.message, "error");
-              return false;
-            }
-            setFiled(result.data);
-            router.refresh();
-            return true;
-          }}
-          onAddNote={() => setScreen("note")}
-          onAddObservation={() => setScreen("observation")}
-          onBack={() => setScreen("home")}
-        />
-      ) : null}
-
       {pending.length === 0 && screen === "note" ? (
-        <NoteForm saving={saving} onCancel={() => setScreen("home")} onSave={fileNote} />
+        <NoteForm
+          keyPoints={keyPoints}
+          onReplace={writeKeyPoints}
+          saving={saving}
+          onCancel={() => setScreen("home")}
+          onSave={fileNote}
+        />
       ) : null}
 
       {pending.length === 0 && screen === "observation" ? (
         <ObservationForm
+          observations={filed}
+          onReplace={writeObservations}
           saving={saving}
           onCancel={() => setScreen("home")}
           onSave={fileObservation}
@@ -709,195 +716,6 @@ function PhotoScreen({
       <Button variant="secondary" onClick={onBack} block style={{ fontSize: 14, minHeight: 48 }}>
         Back to Visit Mode
       </Button>
-    </div>
-  );
-}
-
-/**
- * §6 — the notes and observations this visit has filed, and where they go.
- *
- * [INFERRED] The approved design has no such screen: Add Note and Add
- * Observation were one-way doors that moved a counter. "I put in a note and
- * then I do not know where it goes" is the exact complaint, and a counter that
- * cannot be opened is what caused it. Both lists are shown here, both say which
- * part of §6 they become, and both can be edited on the phone.
- *
- * Why two lists and not one: a key point is a line — a question, an answer,
- * something said in a meeting — and the report prints them as a bullet list. An
- * observation is a finding with a category, and the report prints those as a
- * categorised list. Merging them would force a choice at the moment of typing
- * and lose the category; keeping them apart only works if the screen says which
- * is which, which is what this screen is for.
- */
-function NotesScreen({
-  keyPoints,
-  observations,
-  onWriteKeyPoints,
-  onWriteObservations,
-  onAddNote,
-  onAddObservation,
-  onBack,
-}: {
-  keyPoints: readonly string[];
-  observations: readonly Observation[];
-  onWriteKeyPoints: (next: readonly string[]) => Promise<boolean>;
-  onWriteObservations: (next: readonly Observation[]) => Promise<boolean>;
-  onAddNote: () => void;
-  onAddObservation: () => void;
-  onBack: () => void;
-}) {
-  // Local copies so a half-typed line is not thrown away by the refresh that
-  // follows every successful write.
-  const [points, setPoints] = useState<readonly string[]>(keyPoints);
-  const [cards, setCards] = useState<readonly Observation[]>(observations);
-  const [busy, setBusy] = useState(false);
-
-  async function commitPoints(next: readonly string[]) {
-    setPoints(next);
-    setBusy(true);
-    await onWriteKeyPoints(next.filter((line) => line.trim() !== ""));
-    setBusy(false);
-  }
-
-  async function commitCards(next: readonly Observation[]) {
-    setCards(next);
-    setBusy(true);
-    await onWriteObservations(next.filter((card) => card.text.trim() !== ""));
-    setBusy(false);
-  }
-
-  return (
-    <div style={{ padding: "14px 16px 20px", flex: 1 }}>
-      <h2
-        style={{
-          fontFamily: "var(--font-heading)",
-          fontWeight: 600,
-          fontSize: 19,
-          letterSpacing: "normal",
-          margin: "0 0 4px",
-        }}
-      >
-        §6 Visit Relevant Information
-      </h2>
-      <p style={{ fontSize: 12.5, color: "var(--color-neutral-700)", margin: "0 0 16px" }}>
-        Everything you capture on this phone lands in section 6 of the report.
-      </p>
-
-      <SubHeading>Key points · printed as a bullet list</SubHeading>
-      {points.length === 0 ? (
-        <EmptyState message="No key points yet. Add Note writes one." />
-      ) : (
-        <div className="flex flex-col" style={{ gap: 8 }}>
-          {points.map((line, index) => (
-            <Blueprint key={index} style={{ padding: 8 }}>
-              <Textarea
-                aria-label={`Key point ${index + 1}`}
-                value={line}
-                disabled={busy}
-                onChange={(event) =>
-                  setPoints((current) =>
-                    current.map((item, i) => (i === index ? event.target.value : item)),
-                  )
-                }
-                onBlur={() => void commitPoints(points)}
-                style={{ minHeight: 56, fontSize: 13.5, lineHeight: 1.5 }}
-              />
-              <Button
-                size="compact"
-                variant="secondary"
-                disabled={busy}
-                onClick={() => void commitPoints(points.filter((_, i) => i !== index))}
-                style={{ marginTop: 6, fontSize: 12 }}
-              >
-                Delete
-              </Button>
-            </Blueprint>
-          ))}
-        </div>
-      )}
-      <Button
-        onClick={onAddNote}
-        block
-        disabled={busy}
-        style={{ fontSize: 13.5, minHeight: 46, marginTop: 10, marginBottom: 22 }}
-      >
-        Add a key point
-      </Button>
-
-      <SubHeading>Observations · printed with their category</SubHeading>
-      {cards.length === 0 ? (
-        <EmptyState message="No observations yet. Add Observation writes one." />
-      ) : (
-        <div className="flex flex-col" style={{ gap: 8 }}>
-          {cards.map((card, index) => (
-            <Blueprint key={card.id || index} style={{ padding: 8 }}>
-              <div
-                style={{
-                  fontSize: 10,
-                  letterSpacing: ".12em",
-                  textTransform: "uppercase",
-                  color: "var(--color-neutral-600)",
-                  marginBottom: 5,
-                }}
-              >
-                {card.category.trim() === "" ? "No category" : card.category}
-              </div>
-              <Textarea
-                aria-label={`Observation ${index + 1}`}
-                value={card.text}
-                disabled={busy}
-                onChange={(event) =>
-                  setCards((current) =>
-                    current.map((item, i) =>
-                      i === index ? { ...item, text: event.target.value } : item,
-                    ),
-                  )
-                }
-                onBlur={() => void commitCards(cards)}
-                style={{ minHeight: 64, fontSize: 13.5, lineHeight: 1.5 }}
-              />
-              <Button
-                size="compact"
-                variant="secondary"
-                disabled={busy}
-                onClick={() => void commitCards(cards.filter((_, i) => i !== index))}
-                style={{ marginTop: 6, fontSize: 12 }}
-              >
-                Delete
-              </Button>
-            </Blueprint>
-          ))}
-        </div>
-      )}
-      <Button
-        onClick={onAddObservation}
-        block
-        disabled={busy}
-        style={{ fontSize: 13.5, minHeight: 46, marginTop: 10, marginBottom: 20 }}
-      >
-        Add an observation
-      </Button>
-
-      <Button variant="secondary" onClick={onBack} block style={{ fontSize: 14, minHeight: 48 }}>
-        Back to Visit Mode
-      </Button>
-    </div>
-  );
-}
-
-/** The 10px / .12em uppercase caption the mobile screens label a list with. */
-function SubHeading({ children }: { children: ReactNode }) {
-  return (
-    <div
-      style={{
-        font: "10px var(--font-body)",
-        letterSpacing: ".12em",
-        textTransform: "uppercase",
-        color: "var(--color-neutral-600)",
-        marginBottom: 7,
-      }}
-    >
-      {children}
     </div>
   );
 }

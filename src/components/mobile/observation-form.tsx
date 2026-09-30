@@ -4,6 +4,9 @@ import { useId, useState, type CSSProperties } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Field, Textarea } from "@/components/ui/field";
+import type { Observation } from "@/types/domain";
+
+import { CapturedList } from "./captured-list";
 
 /**
  * Quick observation — README §17, prototype lines 2271..2296, screenshot 18.
@@ -59,6 +62,10 @@ const GROUP_LABEL: CSSProperties = {
 };
 
 export interface ObservationFormProps {
+  /** §6's observation cards as they stand. */
+  observations: readonly Observation[];
+  /** Replace the whole set — `saveObservations` takes the list, not a patch. */
+  onReplace: (next: readonly Observation[]) => Promise<boolean>;
   /** The write is in flight — README §5's in-progress control state. */
   saving?: boolean;
   onCancel: () => void;
@@ -67,12 +74,30 @@ export interface ObservationFormProps {
 }
 
 export function ObservationForm({
+  observations,
+  onReplace,
   saving = false,
   onCancel,
   onSave,
 }: ObservationFormProps) {
   const [category, setCategory] = useState(CATEGORIES[0]);
   const [text, setText] = useState("");
+  // Re-taken from the server whenever a write lands, so an observation just
+  // saved joins the list below without a reload (see note-form.tsx).
+  const [cards, setCards] = useState<readonly Observation[]>(observations);
+  const [stored, setStored] = useState<readonly Observation[]>(observations);
+  if (stored !== observations) {
+    setStored(observations);
+    setCards(observations);
+  }
+  const [busy, setBusy] = useState(false);
+
+  async function replace(next: readonly Observation[]) {
+    setCards(next);
+    setBusy(true);
+    await onReplace(next.filter((card) => card.text.trim() !== ""));
+    setBusy(false);
+  }
   const categoryLabelId = useId();
 
   return (
@@ -88,63 +113,6 @@ export function ObservationForm({
       >
         Quick Observation
       </h2>
-
-      <div id={categoryLabelId} style={GROUP_LABEL}>
-        Category
-      </div>
-      {/* rowGap 14, not the approved 7, is the other half of `.vm-hit`: it puts
-          the wrapped rows exactly one hit box apart so the 44px targets tile
-          instead of overlapping. The column gap stays at the approved 7. */}
-      <div
-        role="group"
-        aria-labelledby={categoryLabelId}
-        style={{
-          display: "flex",
-          flexWrap: "wrap",
-          columnGap: 7,
-          rowGap: 14,
-          marginBottom: 16,
-        }}
-      >
-        {CATEGORIES.map((option) => {
-          const selected = option === category;
-          return (
-            <button
-              key={option}
-              type="button"
-              aria-pressed={selected}
-              onClick={() => setCategory(option)}
-              // `vm-hit` — the confirmed touch-target decision: the chip keeps
-              // its approved ~31px appearance and gains a transparent ±7px hit
-              // box (45px effective) instead of being enlarged. The selected
-              // chip paints its own border and ground, so it drops `vm-chip`
-              // (the hover rule) but keeps the hit area. See phone-frame.tsx.
-              className={selected ? "vm-hit" : "vm-chip vm-hit"}
-              style={{
-                padding: "7px 12px",
-                border: `1px solid ${
-                  selected ? "var(--color-accent)" : "var(--color-divider)"
-                }`,
-                background: selected ? "var(--color-accent-100)" : "transparent",
-                font: "13px var(--font-body)",
-                color: "var(--color-text)",
-                cursor: "pointer",
-              }}
-            >
-              {option}
-            </button>
-          );
-        })}
-      </div>
-
-      <Field label="Text" style={{ marginBottom: 14 }}>
-        <Textarea
-          value={text}
-          onChange={(event) => setText(event.target.value)}
-          placeholder={TEXT_PLACEHOLDER}
-          style={{ minHeight: 110, fontSize: 14, lineHeight: 1.55 }}
-        />
-      </Field>
 
       <div id={categoryLabelId} style={GROUP_LABEL}>
         Category
@@ -221,6 +189,25 @@ export function ObservationForm({
           Save
         </Button>
       </div>
+
+      <CapturedList
+        title="Observations on this report"
+        destination="Printed in §6 Visit Relevant Information, each with its category."
+        items={cards.map((card, index) => ({
+          key: card.id || String(index),
+          label: card.category.trim() === "" ? "No category" : card.category,
+          text: card.text,
+        }))}
+        busy={busy || saving}
+        onChange={(index, value) =>
+          setCards((current) =>
+            current.map((item, i) => (i === index ? { ...item, text: value } : item)),
+          )
+        }
+        onCommit={() => void replace(cards)}
+        onDelete={(index) => void replace(cards.filter((_, i) => i !== index))}
+        emptyMessage="Nothing yet. What you write above lands here."
+      />
     </div>
   );
 }

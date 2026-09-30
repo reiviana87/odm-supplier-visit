@@ -5,6 +5,8 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Field, Textarea } from "@/components/ui/field";
 
+import { CapturedList } from "./captured-list";
+
 /**
  * Quick note — README §17, prototype lines 2298..2307.
  *
@@ -21,8 +23,9 @@ import { Field, Textarea } from "@/components/ui/field";
  * no approved pixels. The hint below the field is the prototype's own copy,
  * wired through `aria-describedby` by `<Field hint>`.
  *
- * Phase 1 keeps the visit's captures in local component state — Save reports
- * what it did and returns home.
+ * The key points already on the report are listed underneath, editable in
+ * place. The screen used to be the field and nothing else, so a note went into
+ * a counter and out of reach.
  */
 
 const NOTE_PLACEHOLDER = "Anything you do not want to lose before the desktop…";
@@ -31,6 +34,15 @@ const NOTE_HINT =
   "Saved as a key point in §6 Visit Relevant Information, where it can be edited at a desk.";
 
 export interface NoteFormProps {
+  /** §6's key points as they stand — one bullet per line on the `visit` row. */
+  keyPoints: readonly string[];
+  /**
+   * Replace the whole list.
+   *
+   * The whole list rather than a patch because that is what `saveSection`
+   * takes: the bullets are one text column, not rows.
+   */
+  onReplace: (next: readonly string[]) => Promise<boolean>;
   onCancel: () => void;
   /**
    * The text itself, which the caller writes.
@@ -44,8 +56,33 @@ export interface NoteFormProps {
   saving?: boolean;
 }
 
-export function NoteForm({ onCancel, onSave, saving = false }: NoteFormProps) {
+export function NoteForm({
+  keyPoints,
+  onReplace,
+  onCancel,
+  onSave,
+  saving = false,
+}: NoteFormProps) {
   const [text, setText] = useState("");
+  // A local copy, so a keystroke shows immediately rather than waiting on a
+  // round trip. It is re-taken from the server whenever a write lands, which is
+  // how a note just saved appears in the list below without a reload. Adjusting
+  // state during render, rather than in an effect, is React's own answer to
+  // deriving state from props.
+  const [points, setPoints] = useState<readonly string[]>(keyPoints);
+  const [stored, setStored] = useState<readonly string[]>(keyPoints);
+  if (stored !== keyPoints) {
+    setStored(keyPoints);
+    setPoints(keyPoints);
+  }
+  const [busy, setBusy] = useState(false);
+
+  async function replace(next: readonly string[]) {
+    setPoints(next);
+    setBusy(true);
+    await onReplace(next.filter((line) => line.trim() !== ""));
+    setBusy(false);
+  }
 
   return (
     <div style={{ padding: "14px 16px 20px", flex: 1 }}>
@@ -87,6 +124,19 @@ export function NoteForm({ onCancel, onSave, saving = false }: NoteFormProps) {
           {saving ? "Saving…" : "Save note"}
         </Button>
       </div>
+
+      <CapturedList
+        title="Key points on this report"
+        destination="Printed in §6 Visit Relevant Information as a bullet list."
+        items={points.map((line, index) => ({ key: String(index), text: line }))}
+        busy={busy || saving}
+        onChange={(index, value) =>
+          setPoints((current) => current.map((item, i) => (i === index ? value : item)))
+        }
+        onCommit={() => void replace(points)}
+        onDelete={(index) => void replace(points.filter((_, i) => i !== index))}
+        emptyMessage="Nothing yet. What you write above lands here."
+      />
     </div>
   );
 }

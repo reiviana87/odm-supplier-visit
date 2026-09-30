@@ -85,6 +85,8 @@ export interface QuickActionGridProps {
    * cannot be opened is what left the user asking where a note had gone.
    */
   onOpenNotes: () => void;
+  /** Open the observation screen, which is also the list of observations. */
+  onOpenObservations: () => void;
 }
 
 export function QuickActionGrid({
@@ -93,6 +95,7 @@ export function QuickActionGrid({
   onAction,
   onOpenPhotos,
   onOpenNotes,
+  onOpenObservations,
 }: QuickActionGridProps) {
   return (
     <div style={{ padding: "14px 16px 20px", flex: 1 }}>
@@ -145,7 +148,7 @@ export function QuickActionGrid({
       >
         <Counter label="Photos" value={counters.photos} onOpen={onOpenPhotos} />
         <Counter label="Notes" value={counters.notes} onOpen={onOpenNotes} />
-        <Counter label="Obs." value={counters.observations} onOpen={onOpenNotes} />
+        <Counter label="Obs." value={counters.observations} onOpen={onOpenObservations} />
       </div>
 
       <div style={SECTION_LABEL}>Last photos</div>
