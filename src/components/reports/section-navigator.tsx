@@ -5,7 +5,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { CompletionIndicator } from "@/components/ui/progress";
 import { Icon } from "@/components/ui/icon";
-import { SECTIONS, type SectionId } from "@/types/domain";
+import { SECTIONS, type ReportStatus, type SectionId } from "@/types/domain";
 
 /**
  * Editor section navigator — README §6.1 / §6.2.
@@ -31,7 +31,10 @@ export function SectionNavigator({
   warnings = {},
   aiAvailable = {},
   submitting = false,
+  status,
   onSubmitForReview,
+  onMarkCompleted,
+  onRevise,
 }: {
   reportId: string;
   activeSection: SectionId;
@@ -43,8 +46,36 @@ export function SectionNavigator({
   aiAvailable?: Partial<Record<SectionId, boolean>>;
   /** True while the status write is in flight — the button holds still. */
   submitting?: boolean;
+  /**
+   * What the report is now, which decides what the one button offers.
+   *
+   * It used to offer "Submit for Review" whatever the status was, so a report
+   * already in review had a button that moved it to where it already was, and
+   * a finished one had no way forward at all.
+   */
+  status: ReportStatus;
   onSubmitForReview?: () => void;
+  /** Move it on to Final — the state the dashboard counts as completed. */
+  onMarkCompleted?: () => void;
+  /** Open the next revision of a final report: x00 becomes x01. */
+  onRevise?: () => void;
 }) {
+  const advance =
+    status === "draft"
+      ? { label: "Submit for Review", onClick: onSubmitForReview, hint: null }
+      : status === "in_review"
+        ? {
+            label: "Mark as Completed",
+            onClick: onMarkCompleted,
+            hint: "Moves it to Final. Editing a final report means opening a revision.",
+          }
+        : status === "final"
+          ? {
+              label: "Create revision",
+              onClick: onRevise,
+              hint: "Copies this report to the next revision number and leaves this one as issued.",
+            }
+          : { label: "Archived", onClick: undefined, hint: "Restore it from the reports list to work on it." };
   return (
     <div
       className="flex-none self-start overflow-auto"
@@ -133,13 +164,26 @@ export function SectionNavigator({
       <div className="hr" style={{ margin: "14px 8px" }} />
 
       <Button
-        variant="secondary"
+        variant={status === "final" ? "primary" : "secondary"}
         loading={submitting}
-        onClick={onSubmitForReview}
+        disabled={!advance.onClick}
+        onClick={advance.onClick}
         style={{ fontSize: 12, margin: "0 8px", width: "calc(100% - 16px)" }}
       >
-        Submit for Review
+        {advance.label}
       </Button>
+      {advance.hint ? (
+        <p
+          style={{
+            margin: "7px 8px 0",
+            fontSize: 11,
+            lineHeight: 1.4,
+            color: "var(--color-neutral-600)",
+          }}
+        >
+          {advance.hint}
+        </p>
+      ) : null}
     </div>
   );
 }

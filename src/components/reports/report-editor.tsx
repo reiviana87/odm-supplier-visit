@@ -26,7 +26,12 @@ import {
   type AutosaveOutcome,
   type AutosaveSaveContext,
 } from "@/lib/autosave/use-autosave";
-import { getSectionRecord, saveSection, setReportStatus } from "@/lib/data/report-actions";
+import {
+  getSectionRecord,
+  reviseReport,
+  saveSection,
+  setReportStatus,
+} from "@/lib/data/report-actions";
 import { exportReportDocx } from "@/lib/export/export-actions";
 import { sectionBodyOf } from "@/lib/data/report-mappers";
 import { reportCompletion, sectionCompletion } from "@/lib/reports/completion";
@@ -158,6 +163,9 @@ function SectionEditor({
    */
   const versionRef = useRef(record?.version ?? 1);
 
+  /** True while a save the user asked for by name is in flight — see `save`. */
+  const byHandRef = useRef(false);
+
   /** Sections whose content is rows or photographs have no body to autosave. */
   const editable =
     record !== undefined && sectionBodyOf(report.sections, activeSection) !== null;
@@ -201,6 +209,12 @@ function SectionEditor({
 
       if (result.ok) {
         versionRef.current = result.data.version;
+        // Only when the button was pressed. Autosave is meant to be unnoticed,
+        // and a toast every 900ms of typing would be the opposite.
+        if (byHandRef.current) {
+          byHandRef.current = false;
+          toast(`${sectionLabel} saved.`);
+        }
         return {
           status: "saved",
           version: result.data.version,
@@ -209,6 +223,10 @@ function SectionEditor({
       }
 
       if (result.error.code !== "stale") {
+        // A failed save used to change one 11.5px label and nothing else, which
+        // is not enough for the one outcome the author must not miss.
+        byHandRef.current = false;
+        toast(result.error.message, "error");
         return { status: "error", message: result.error.message };
       }
 
@@ -226,7 +244,7 @@ function SectionEditor({
         serverValue: { body: latest.data.body, excluded: latest.data.excluded },
       };
     },
-    [report.id, activeSection],
+    [report.id, activeSection, sectionLabel, toast],
   );
 
   /**
@@ -361,6 +379,43 @@ function SectionEditor({
   }, [report.id, router, toast]);
 
   /**
+   * Final — what the dashboard counts as completed.
+   *
+   * There is still no approval workflow: this is the status field, and the
+   * sentence says so rather than implying somebody signed it off.
+   */
+  const markCompleted = useCallback(() => {
+    startSubmit(async () => {
+      const result = await setReportStatus(report.id, "final");
+      if (!result.ok) {
+        toast(result.error.message, "error");
+        return;
+      }
+      toast("Status set to Final. To change it now, open a revision.");
+      router.refresh();
+    });
+  }, [report.id, router, toast]);
+
+  /**
+   * Open the next revision — README §1.3, `x00` becomes `x01`.
+   *
+   * The issued report is left exactly as it is; the copy opens as a draft and
+   * the browser follows it, because the next thing the author wants is to edit
+   * the new one, not to look at the old one again.
+   */
+  const revise = useCallback(() => {
+    startSubmit(async () => {
+      const result = await reviseReport(report.id);
+      if (!result.ok) {
+        toast(result.error.message, "error");
+        return;
+      }
+      toast(`${result.data.documentNumber} opened as a draft — ${report.documentNumber} is unchanged.`);
+      router.push(`/reports/${result.data.id}/general`);
+    });
+  }, [report.documentNumber, report.id, router, toast]);
+
+  /**
    * README §24 — build the document, then hand it to the browser.
    *
    * The bytes come back base64 because a Buffer does not survive the server
@@ -417,12 +472,14 @@ function SectionEditor({
         report={report}
         activeSection={activeSection}
         autosave={autosave}
-        onSaveNow={saveNow}
+        onSaveNow={() => {
+          byHandRef.current = true;
+          saveNow();
+        }}
+        canSaveNow={editable}
         onRetrySave={retry}
         onReviewConflict={() => setConflictOpen(true)}
-        onPreview={() =>
-          toast("Export the Word file to see the document — an in-app preview is not built yet.")
-        }
+        railPanel={railPanel}
         onToggleSources={() => onToggleRail("sources")}
         onToggleAssistant={() => onToggleRail("assistant")}
         onExport={exportDocx}
@@ -439,6 +496,9 @@ function SectionEditor({
         style={{ minHeight: "calc(100vh - var(--editor-header-offset))" }}
       >
         <SectionNavigator
+          status={report.status}
+          onMarkCompleted={markCompleted}
+          onRevise={revise}
           reportId={report.id}
           activeSection={activeSection}
           completion={completion}

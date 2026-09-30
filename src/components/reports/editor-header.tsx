@@ -24,14 +24,21 @@ import { SECTIONS } from "@/types/domain";
  * Prototype: design-handoff/ODM Supplier Visit.dc.html lines 766..794, and
  * design-handoff/screenshots/04-report-editor.png for the action set.
  */
+/** README §4 — a toggle that is on carries the accent border and ground. */
+const PRESSED = {
+  borderColor: "var(--color-accent)",
+  background: "var(--color-accent-100)",
+} as const;
+
 export function EditorHeader({
   report,
   activeSection,
   autosave,
   onSaveNow,
+  canSaveNow = true,
+  railPanel,
   onRetrySave,
   onReviewConflict,
-  onPreview,
   onToggleSources,
   onToggleAssistant,
   onExport,
@@ -42,10 +49,13 @@ export function EditorHeader({
   activeSection: SectionId;
   autosave: AutosaveState;
   onSaveNow?: () => void;
+  /** False on the sections whose content is rows or photographs. */
+  canSaveNow?: boolean;
+  /** Which rail is open, so its toggle can look pressed. */
+  railPanel?: "sources" | "assistant" | null;
   onRetrySave?: () => void;
   /** Phase 2 §18 — opens the conflict dialog from the indicator. */
   onReviewConflict?: () => void;
-  onPreview?: () => void;
   onToggleSources?: () => void;
   onToggleAssistant?: () => void;
   onExport?: () => void;
@@ -110,17 +120,34 @@ export function EditorHeader({
         </div>
 
         <div className="flex flex-none" style={{ gap: 6 }}>
-          <Button variant="secondary" icon="save" size="toolbar" onClick={onSaveNow}>
+          {/* Disabled on the sections that have no body of their own — General
+              Information, Company Information and the three image regions save
+              through their own controls. Save used to be clickable there and
+              return on its first line, which is indistinguishable from broken. */}
+          <Button
+            variant="secondary"
+            icon="save"
+            size="toolbar"
+            onClick={onSaveNow}
+            disabled={!canSaveNow}
+            title={
+              canSaveNow
+                ? "Save this section now"
+                : "This section saves through its own controls as you change it"
+            }
+          >
             Save
           </Button>
-          <Button variant="secondary" icon="eye" size="toolbar" onClick={onPreview}>
-            Preview
-          </Button>
+          {/* Preview is gone rather than disabled: there is no in-app preview to
+              enable, and a button whose only effect was a "not built yet" toast
+              read as a broken control. Export Word is the preview. */}
           <Button
             variant="secondary"
             icon="note"
             size="toolbar"
             onClick={onToggleSources}
+            aria-pressed={railPanel === "sources"}
+            style={railPanel === "sources" ? PRESSED : undefined}
           >
             Sources
           </Button>
@@ -129,9 +156,11 @@ export function EditorHeader({
             icon="spark"
             size="toolbar"
             onClick={onToggleAssistant}
+            aria-pressed={railPanel === "assistant"}
             style={{
               borderColor: "var(--color-accent-300)",
               color: "var(--color-accent-800)",
+              ...(railPanel === "assistant" ? PRESSED : {}),
             }}
           >
             AI Assistant

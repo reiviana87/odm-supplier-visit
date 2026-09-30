@@ -319,8 +319,20 @@ export async function deletePhoto(photoId: string): Promise<DataResult<{ id: str
 
   // Row first, object second: an object with no row is invisible but harmless,
   // whereas a row pointing at nothing renders a broken photograph.
+  //
+  // And only when nothing else points at it. A revision shares its parent's
+  // photographs rather than duplicating forty objects through a serverless
+  // function (`reviseReport`), so the same path can carry more than one row —
+  // deleting the copy from the revision must not blank the original.
   if (row.storage_path) {
-    await s.client.storage.from(BUCKET).remove([row.storage_path]);
+    const { count } = await s.client
+      .from("report_images")
+      .select("id", { count: "exact", head: true })
+      .eq("storage_path", row.storage_path);
+
+    if ((count ?? 0) === 0) {
+      await s.client.storage.from(BUCKET).remove([row.storage_path]);
+    }
   }
 
   revalidateReport(row.report_id);

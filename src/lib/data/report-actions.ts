@@ -59,7 +59,10 @@ import {
 } from "@/lib/data/report-mappers";
 import { getReport as loadReport } from "@/lib/data/reports";
 import { toNullable } from "@/lib/data/supplier-mappers";
-import { documentNumberSchema } from "@/lib/reports/document-number";
+import {
+  documentNumberSchema,
+  duplicateDocumentNumber,
+} from "@/lib/reports/document-number";
 import { isMockMode } from "@/lib/supabase/env";
 import { getServerSupabase } from "@/lib/supabase/server";
 import type { Database } from "@/types/database";
@@ -935,4 +938,168 @@ export async function saveTargetProducts(
 
   revalidateReport(reportId);
   return ok((data ?? []).map(rowToTargetProduct));
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Revisions — README §1.3
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Everything that belongs to a report and travels with a revision.
+ *
+ * `report_exports` and `report_ai_generations` are deliberately absent: they are
+ * the history of the document that was issued, not part of its content. A
+ * revision has exported nothing and asked the model nothing yet.
+ */
+const REVISION_CHILD_TABLES = [
+  "report_members",
+  "report_sections",
+  "report_observations",
+  "report_target_products",
+  "report_product_rows",
+  "report_images",
+  "report_files",
+] as const;
+
+/** Columns the database owns on every child row; never carried across. */
+const GENERATED_COLUMNS = ["id", "created_at", "updated_at", "version"] as const;
+
+/**
+ * The next free revision of `documentNumber`.
+ *
+ * `duplicateDocumentNumber` bumps by one, which is right until somebody has
+ * already revised this report — then x01 exists and the answer is x02. The
+ * numbers in hand are checked rather than assumed, because the unique index on
+ * `document_number` would otherwise turn an ordinary second revision into a
+ * conflict the user cannot act on.
+ */
+function nextFreeRevision(documentNumber: string, taken: ReadonlySet<string>): string | null {
+  let candidate = documentNumber;
+  for (let attempt = 0; attempt < 99; attempt += 1) {
+    try {
+      candidate = duplicateDocumentNumber(candidate);
+    } catch {
+      return null;
+    }
+    if (!taken.has(candidate.toUpperCase())) return candidate;
+  }
+  return null;
+}
+
+/**
+ * Open a revision of a report — README §1.3, `GSO-2610002x00` → `GSO-2610002x01`.
+ *
+ * A report that has been issued is a record of what was said on a date, so it
+ * is never edited back into a different document: revising it makes a new one
+ * that starts as a copy and carries the next revision number. The original
+ * keeps its status and stays readable beside it; the copy starts as a draft,
+ * because a revision that arrives already final has been reviewed by nobody.
+ *
+ * ## What is copied, and what is not
+ *
+ * The frozen supplier snapshot travels verbatim. That is the whole point of
+ * §8.3: the revision describes the same visit, so it must describe the supplier
+ * as it was on the day, not as it is today. Creating the row through the normal
+ * RPC would have taken a fresh snapshot and quietly rewritten history.
+ *
+ * Photographs and source files are shared rather than copied. Two rows point at
+ * one object in storage; `deletePhoto` checks for other referents before
+ * removing the bytes, which is what makes that safe. Duplicating forty images
+ * through a serverless function to open a revision is the alternative, and it
+ * is both slower and no more correct.
+ */
+export async function reviseReport(
+  id: string,
+): Promise<DataResult<{ id: string; documentNumber: string }>> {
+  const session = await beginWrite(canEdit);
+  if (!session.ok) return session;
+
+  const { data: source, error: readError } = await session.data.client
+    .from("reports")
+    .select("*")
+    .eq("id", id)
+    .maybeSingle();
+
+  if (readError) return failWith(toDataError(readError, "reviseReport"));
+  if (!source) return fail("not_found");
+
+  const { data: numbers, error: numbersError } = await session.data.client
+    .from("reports")
+    .select("document_number");
+  if (numbersError) return failWith(toDataError(numbersError, "reviseReport"));
+
+  const taken = new Set((numbers ?? []).map((row) => row.document_number.toUpperCase()));
+  const documentNumber = nextFreeRevision(source.document_number, taken);
+  if (!documentNumber) {
+    return fail(
+      "invalid",
+      `${source.document_number} has no revision left — x99 is the last one.`,
+    );
+  }
+
+  // Copied field by field rather than spread, so a column added to `reports`
+  // later has to be considered here instead of travelling by accident.
+  const { data: created, error: insertError } = await session.data.client
+    .from("reports")
+    .insert({
+      document_number: documentNumber,
+      supplier_id: source.supplier_id,
+      // A revision is reviewed from the start, not inherited as reviewed.
+      status: "draft",
+      visit_date: source.visit_date,
+      period: source.period,
+      employee_id: source.employee_id,
+      owner_id: source.owner_id,
+      location: source.location,
+      start_time: source.start_time,
+      end_time: source.end_time,
+      project: source.project,
+      business_unit: source.business_unit,
+      product_category: source.product_category,
+      // §8.3 — the supplier as it was on the day of the visit.
+      company_information: source.company_information,
+      snapshot_taken_at: source.snapshot_taken_at,
+      created_by: session.data.userId,
+      updated_by: session.data.userId,
+    })
+    .select("id")
+    .single();
+
+  if (insertError) return failWith(writeError(insertError, "reviseReport"));
+
+  const newId = created.id;
+
+  // One loop over seven tables, so an untyped handle on the same client. The
+  // generated types describe each table's Row and Insert separately and cannot
+  // say "these two are the same table", which is the one fact that makes this
+  // safe: every object being inserted came out of the table it is going back
+  // into. A column added later travels by itself, and a column the insert will
+  // not take still fails loudly, because PostgREST rejects the statement.
+  const copier = session.data.client as unknown as SupabaseClient;
+
+  for (const table of REVISION_CHILD_TABLES) {
+    const { data: rows, error } = await copier
+      .from(table)
+      .select("*")
+      .eq("report_id", id);
+
+    if (error) return failWith(toDataError(error, `reviseReport:${table}`));
+    if (!rows || rows.length === 0) continue;
+
+    const copies = (rows as Record<string, unknown>[]).map((row) => {
+      const copy: Record<string, unknown> = { ...row };
+      for (const column of GENERATED_COLUMNS) delete copy[column];
+      copy.report_id = newId;
+      if ("created_by" in row) copy.created_by = session.data.userId;
+      if ("updated_by" in row) copy.updated_by = session.data.userId;
+      return copy;
+    });
+
+    const { error: copyError } = await copier.from(table).insert(copies);
+    if (copyError) return failWith(toDataError(copyError, `reviseReport:${table}`));
+  }
+
+  revalidateReport(newId);
+  revalidateReport(id);
+  return ok({ id: newId, documentNumber });
 }
