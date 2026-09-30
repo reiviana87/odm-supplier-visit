@@ -295,14 +295,15 @@ export default async function DashboardPage() {
         subtitle={supplierLine ? `${dateLine} · ${supplierLine}` : dateLine}
         spacing={22}
         actions={
-          <>
-            <ButtonLink href="/suppliers/new" variant="secondary" icon="plus">
-              Add Supplier
-            </ButtonLink>
-            <ButtonLink href="/reports/new" variant="primary" icon="plus">
-              New Visit Report
-            </ButtonLink>
-          </>
+          /* Add Supplier only. New Visit Report used to sit here too, forty
+             pixels under the identical button in the global top bar and
+             pointing at the same /reports/new — the same action, twice, on the
+             one screen where both are always visible. The global one stays,
+             because it is on every screen; this one had nothing extra to
+             offer. */
+          <ButtonLink href="/suppliers/new" variant="secondary" icon="plus">
+            Add Supplier
+          </ButtonLink>
         }
       />
 
