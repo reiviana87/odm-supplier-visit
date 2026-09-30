@@ -108,7 +108,9 @@ export function CapturedList({
                   style={{
                     width: "100%",
                     maxHeight: 150,
-                    objectFit: "cover",
+                    // Whole, not cropped — the same reason as the desktop card.
+                    objectFit: "contain",
+                    background: "var(--color-neutral-100)",
                     display: "block",
                     marginBottom: 7,
                     border: "1px solid var(--color-divider)",
