@@ -34,7 +34,13 @@ import { deflateRawSync, inflateRawSync } from "node:zlib";
 
 import type { ExportImage } from "@/lib/export/docx";
 import { photoBoxPt, planAppendix } from "@/lib/reports/appendix-layout";
-import { IMAGE_REGION_GEOMETRY, type ImageRegion, type Report, type ReportPhoto } from "@/types/domain";
+import {
+  IMAGE_REGION_GEOMETRY,
+  type ImageRegion,
+  type Report,
+  type ReportPhoto,
+  type SupplierCertificate,
+} from "@/types/domain";
 
 /**
  * Raised when the uploaded file cannot be used as a shell — not a bug, a fact
@@ -55,6 +61,8 @@ export interface TemplateReportInput {
   images: Map<string, ExportImage>;
   /** The corporate `.docx` exactly as it was uploaded. */
   template: Uint8Array;
+  /** The supplier's certificates, printed as §7's table. */
+  certificates?: readonly SupplierCertificate[];
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -755,10 +763,12 @@ function inlinePhotos(
   // README §16 records whether a region prints a caption row; only the appendix
   // does. (Its `targetHeightCm` is not read here: the measured 7 cm box lives in
   // appendix-layout.ts, and the 6.5 in that record predates the real template.)
-  return (
-    spacer() +
-    photoGrid(rows, images, media, shell, { captions: IMAGE_REGION_GEOMETRY[region].captionRow })
-  );
+  // Captions on every region, not only the appendix. §16's geometry record
+  // says the other two print none, and that was true of the prototype — but a
+  // caption the author typed under a §4.1 photograph then appeared nowhere in
+  // the document, while the built-in layout printed it. Two exporters
+  // disagreeing about the user's own words is the worse of the two answers.
+  return spacer() + photoGrid(rows, images, media, shell, { captions: true });
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -766,7 +776,7 @@ function inlinePhotos(
 // ─────────────────────────────────────────────────────────────────────────────
 
 function documentBody(input: TemplateReportInput, shell: Shell, media: MediaRegistry): string {
-  const { report, photos, images } = input;
+  const { report, photos, images, certificates = [] } = input;
   const snapshot = report.supplierSnapshot;
   const sections = report.sections;
 
@@ -831,15 +841,58 @@ function documentBody(input: TemplateReportInput, shell: Shell, media: MediaRegi
 
   const targetRows = sections.targetProducts.length
     ? dataTable(
-        columnWidths(shell, [24, 16, 24, 16, 20]),
+        columnWidths(shell, [20, 14, 20, 14, 16, 16]),
         [
-          ["Product", "Model", "Application", "Market", "Requirements"],
+          ["Product", "Model", "Application", "Market", "Requirements", "Comments"],
           ...sections.targetProducts.map((product) => [
             product.name,
             product.model,
             product.application,
             product.expectedMarket,
             product.technicalRequirements,
+            // The audit found this one missing from both exporters.
+            product.comments,
+          ]),
+        ],
+        { headerRow: true },
+      )
+    : "";
+
+  /**
+   * What the visit itself was — date, place, who went, and how it is filed.
+   *
+   * The audit found all of it stored and none of it printed by this exporter:
+   * the corporate shell carried the employee and the period and stopped there,
+   * so the location somebody typed, the attendees they listed and the
+   * project / business unit / category the report is filed under reached no
+   * document at all. The built-in layout printed most of them; the one the
+   * company actually sends did not.
+   */
+  const visitFacts: string[] = [
+    `Visit date: ${report.visitDate}`,
+    report.location ? `Location: ${report.location}` : "",
+    report.members.length ? `Members: ${report.members.join(", ")}` : "",
+    report.project ? `Project: ${report.project}` : "",
+    report.businessUnit ? `Business unit: ${report.businessUnit}` : "",
+    report.productCategory ? `Product category: ${report.productCategory}` : "",
+  ].filter((line) => line !== "");
+
+  const visitLine = body(visitFacts.join("  ·  "));
+
+  // §7's own table. It used to print the note and nothing else, so every
+  // certificate recorded during a visit was missing from the document.
+  const listedCertificates = certificates.filter((c) => c.name.trim() !== "");
+  const certificateRows = listedCertificates.length
+    ? dataTable(
+        columnWidths(shell, [34, 24, 14, 14, 14]),
+        [
+          ["Certificate", "Number", "Issued", "Expires", "Copy"],
+          ...listedCertificates.map((c) => [
+            c.name,
+            c.number,
+            c.issueDate,
+            c.expirationDate,
+            c.fileName ? "Collected" : "Not collected",
           ]),
         ],
         { headerRow: true },
@@ -884,6 +937,7 @@ function documentBody(input: TemplateReportInput, shell: Shell, media: MediaRegi
   return [
     title,
     employeeLine,
+    visitLine,
     supplierName,
 
     heading("Purpose", shell, false),
@@ -909,6 +963,7 @@ function documentBody(input: TemplateReportInput, shell: Shell, media: MediaRegi
     qa,
 
     heading("Certificates:", shell, true),
+    certificateRows,
     body(sections.certificateNote),
 
     heading("Main Partners/Competitors Reference:", shell, true),

@@ -2,7 +2,7 @@
   "name": "odm-supplier-visit",
   "version": "0.1.0",
   "private": true,
-  "description": "EBARA Global Sourcing Office — factory visit documentation, supplier master data and corporate DOCX visit reports.",
+  "description": "EBARA Global Sourcing Office \u2014 factory visit documentation, supplier master data and corporate DOCX visit reports.",
   "engines": {
     "node": ">=20.9.0"
   },
@@ -18,7 +18,10 @@
     "test:watch": "vitest",
     "seed": "node --env-file=.env.local scripts/seed.mjs",
     "validate:backend": "node --env-file=.env.local scripts/validate-backend.mjs",
-    "create-admin": "node --env-file=.env.local scripts/create-admin.mjs"
+    "create-admin": "node --env-file=.env.local scripts/create-admin.mjs",
+    "audit:seed": "node --env-file=.env.local scripts/audit-seed.mjs",
+    "audit:clean": "node --env-file=.env.local scripts/audit-seed.mjs --clean",
+    "audit:export": "vitest run --config vitest.audit.config.mts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.128.0",

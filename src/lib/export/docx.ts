@@ -42,7 +42,7 @@ import {
   photoBoxPt,
   planAppendix,
 } from "@/lib/reports/appendix-layout";
-import type { Report, ReportPhoto } from "@/types/domain";
+import type { Report, ReportPhoto, SupplierCertificate } from "@/types/domain";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // House style
@@ -72,6 +72,8 @@ export interface BuildDocxInput {
   photos: readonly ReportPhoto[];
   /** Photo id → bytes. A photo with no entry is skipped rather than breaking. */
   images: Map<string, ExportImage>;
+  /** The supplier's certificates, printed as §7's table. */
+  certificates?: readonly SupplierCertificate[];
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -339,8 +341,50 @@ function photosIn(photos: readonly ReportPhoto[], region: ReportPhoto["region"])
     .sort((a, b) => a.sortOrder - b.sortOrder);
 }
 
+/**
+ * The supplier's certificates, as the report's own table.
+ *
+ * §7 used to print only the free note. The certificates themselves — the names,
+ * the numbers, the dates somebody stood in a factory and copied off a wall —
+ * were in the database, on the screen, and in no document. A section called
+ * Certificates that lists none is the clearest kind of silent loss.
+ */
+function certificateTable(certificates: readonly SupplierCertificate[]): Paragraph[] {
+  const listed = certificates.filter((certificate) => certificate.name.trim() !== "");
+  if (listed.length === 0) return [];
+
+  return [
+    table([
+      new TableRow({
+        tableHeader: true,
+        children: [
+          cell("Certificate", { header: true, width: 34 }),
+          cell("Number", { header: true, width: 24 }),
+          cell("Issued", { header: true, width: 14 }),
+          cell("Expires", { header: true, width: 14 }),
+          cell("Copy", { header: true, width: 14 }),
+        ],
+      }),
+      ...listed.map(
+        (certificate) =>
+          new TableRow({
+            children: [
+              cell(certificate.name),
+              cell(certificate.number),
+              cell(certificate.issueDate),
+              cell(certificate.expirationDate),
+              // What the reader needs to know is whether the paper was seen,
+              // not the file name of the scan.
+              cell(certificate.fileName ? "Collected" : "Not collected"),
+            ],
+          }),
+      ),
+    ]),
+  ] as unknown as Paragraph[];
+}
+
 export async function buildReportDocx(input: BuildDocxInput): Promise<Buffer> {
-  const { report, photos, images } = input;
+  const { report, photos, images, certificates = [] } = input;
   const snapshot = report.supplierSnapshot;
   const sections = report.sections;
 
@@ -392,6 +436,10 @@ export async function buildReportDocx(input: BuildDocxInput): Promise<Buffer> {
     ["Visit Date", report.visitDate],
     ["Location", report.location],
     ["Members", report.members.join(", ")],
+    // The audit found these three stored and never printed.
+    ["Project", report.project ?? ""],
+    ["Business Unit", report.businessUnit ?? ""],
+    ["Product Category", report.productCategory ?? ""],
   ]);
 
   const companyInfo = definitionTable([
@@ -442,11 +490,14 @@ export async function buildReportDocx(input: BuildDocxInput): Promise<Buffer> {
           new TableRow({
             tableHeader: true,
             children: [
-              cell("Product", { header: true, width: 24 }),
-              cell("Model", { header: true, width: 16 }),
-              cell("Application", { header: true, width: 24 }),
-              cell("Market", { header: true, width: 16 }),
-              cell("Requirements", { header: true, width: 20 }),
+              cell("Product", { header: true, width: 20 }),
+              cell("Model", { header: true, width: 14 }),
+              cell("Application", { header: true, width: 20 }),
+              cell("Market", { header: true, width: 14 }),
+              cell("Requirements", { header: true, width: 16 }),
+              // The audit found this column missing: a user typed notes onto a
+              // target product and they were in the database and in no document.
+              cell("Comments", { header: true, width: 16 }),
             ],
           }),
           ...sections.targetProducts.map(
@@ -458,6 +509,7 @@ export async function buildReportDocx(input: BuildDocxInput): Promise<Buffer> {
                   cell(product.application),
                   cell(product.expectedMarket),
                   cell(product.technicalRequirements),
+                  cell(product.comments),
                 ],
               }),
           ),
@@ -519,6 +571,7 @@ export async function buildReportDocx(input: BuildDocxInput): Promise<Buffer> {
       : []),
 
     heading("Certificates", "7."),
+    ...certificateTable(certificates),
     ...body(sections.certificateNote),
 
     heading("Partners", "8."),

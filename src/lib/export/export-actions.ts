@@ -25,13 +25,14 @@ import { canEdit } from "@/lib/auth/roles";
 import { requireUser } from "@/lib/auth/session";
 import { fail, ok, type DataResult } from "@/lib/data/errors";
 import { listReportPhotos } from "@/lib/data/photo-actions";
+import { getSupplierCertificates } from "@/lib/data/suppliers";
 import { getReport } from "@/lib/data/reports";
 import { getActiveTemplateBytes } from "@/lib/data/template-actions";
 import { buildReportDocx, exportFileName, type ExportImage } from "@/lib/export/docx";
 import { buildTemplateReportDocx } from "@/lib/export/template-docx";
 import { isMockMode } from "@/lib/supabase/env";
 import { getServerSupabase } from "@/lib/supabase/server";
-import type { Report, ReportPhoto } from "@/types/domain";
+import type { Report, ReportPhoto, SupplierCertificate } from "@/types/domain";
 
 export interface ExportedDocx {
   fileName: string;
@@ -123,6 +124,7 @@ async function generate(
   report: Report,
   photos: readonly ReportPhoto[],
   images: Map<string, ExportImage>,
+  certificates: readonly SupplierCertificate[],
 ): Promise<GeneratedDocument> {
   // `getActiveTemplateBytes` answers `ok(null)` when no template is active —
   // that is a normal state, not a failure, and it is the state a fresh project
@@ -132,7 +134,7 @@ async function generate(
 
   if (!template.ok || template.data === null) {
     return {
-      buffer: await buildReportDocx({ report, photos, images }),
+      buffer: await buildReportDocx({ report, photos, images, certificates }),
       usedCorporateTemplate: false,
       templateNotice: template.ok ? NO_TEMPLATE_NOTICE : UNREADABLE_TEMPLATE_NOTICE,
     };
@@ -140,14 +142,20 @@ async function generate(
 
   try {
     return {
-      buffer: buildTemplateReportDocx({ report, photos, images, template: template.data.bytes }),
+      buffer: buildTemplateReportDocx({
+        report,
+        photos,
+        images,
+        certificates,
+        template: template.data.bytes,
+      }),
       usedCorporateTemplate: true,
       templateNotice: null,
     };
   } catch (error) {
     console.error("[export] the corporate template could not be used", error);
     return {
-      buffer: await buildReportDocx({ report, photos, images }),
+      buffer: await buildReportDocx({ report, photos, images, certificates }),
       usedCorporateTemplate: false,
       templateNotice: UNUSABLE_TEMPLATE_NOTICE,
     };
@@ -190,9 +198,15 @@ export async function exportReportDocx(reportId: string): Promise<DataResult<Exp
 
   const { images, skipped } = await loadImages(photos, paths);
 
+  // §7 prints the supplier's certificates, which live on the supplier rather
+  // than on the report. A failed read is not worth losing the export over: the
+  // section still carries its note, and the table is simply absent.
+  const certificateResult = await getSupplierCertificates(report.supplierSnapshot.supplierId);
+  const certificates = certificateResult.ok ? certificateResult.data : [];
+
   let document: GeneratedDocument;
   try {
-    document = await generate(report, photos, images);
+    document = await generate(report, photos, images, certificates);
   } catch (error) {
     console.error("[export] docx generation failed", error);
     return fail(
