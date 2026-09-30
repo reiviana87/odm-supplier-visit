@@ -382,6 +382,28 @@ export function PhotoSection({
     [handleReorder, items],
   );
 
+  /**
+   * Move one photograph one place, which is how people actually reorder.
+   *
+   * Dragging existed and was the only way. It asks for a precise press-hold-
+   * drag-release onto another card, which is hard with a mouse, harder on a
+   * laptop trackpad, and impossible to undo if it lands wrong — "I tried to
+   * reorder the photos and they disappeared" started here. Two arrows move the
+   * card by one; dragging still works for a long jump.
+   */
+  const nudge = useCallback(
+    (photoId: string, by: -1 | 1) => {
+      const ids = items.map((photo) => photo.id);
+      const from = ids.indexOf(photoId);
+      const to = from + by;
+      if (from === -1 || to < 0 || to >= ids.length) return;
+
+      ids.splice(to, 0, ids.splice(from, 1)[0]);
+      handleReorder(ids);
+    },
+    [handleReorder, items],
+  );
+
   const reorderable = region === "APPENDIX_IMAGES";
 
   const grid = (
@@ -406,6 +428,10 @@ export function PhotoSection({
             photo={photo}
             index={index + 1}
             showDragHandle={reorderable}
+            onMoveEarlier={index === 0 ? undefined : () => nudge(photo.id, -1)}
+            onMoveLater={
+              index === items.length - 1 ? undefined : () => nudge(photo.id, 1)
+            }
             selected={selected.has(photo.id)}
             onCaptionChange={handleCaptionChange}
             onCommitCaption={handleCommitCaption}
@@ -468,11 +494,7 @@ export function PhotoSection({
         onGenerateAll={handleGenerateAllCaptions}
         onToggleSelectAll={toggleSelectAll}
         onArrange={() => toast(PHASE.arrange)}
-        onMoveSelected={() =>
-          handleMoveSelected(
-            region === "APPENDIX_IMAGES" ? "MAIN_PRODUCT_IMAGES" : "APPENDIX_IMAGES",
-          )
-        }
+        onMoveTo={handleMoveSelected}
         onDeleteSelected={handleDeleteSelected}
       />
 

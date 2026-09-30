@@ -41,6 +41,15 @@ export interface PhotoCardProps {
   showDragHandle?: boolean;
   /** README §4 — selected is a 2px accent outline drawn inside the frame. */
   selected?: boolean;
+  /**
+   * Move this photograph one place earlier, or undefined when it is first.
+   *
+   * One click each. Dragging is still there for a long move, but it was the
+   * only way to reorder and it is the kind of gesture that goes wrong quietly.
+   */
+  onMoveEarlier?: () => void;
+  /** One place later, or undefined when it is last. */
+  onMoveLater?: () => void;
   onCaptionChange: (id: string, caption: string) => void;
   /**
    * Save what is in the caption field. Fired on blur, because the approved card
@@ -139,6 +148,8 @@ export function PhotoCard({
   index,
   showDragHandle = false,
   selected = false,
+  onMoveEarlier,
+  onMoveLater,
   onCaptionChange,
   onCommitCaption,
   onAcceptCaption,
@@ -173,10 +184,16 @@ export function PhotoCard({
       }}
     >
       <div style={{ position: "relative" }}>
-        {/* eslint-disable-next-line @next/next/no-img-element -- the seed ships
-            SVG placeholders of unknown intrinsic size, so next/image has no
-            width/height to work from; the approved card is an explicit 150px
-            box with object-fit:cover, which a plain <img> states honestly. */}
+        {/* eslint-disable-next-line @next/next/no-img-element -- photographs of
+            unknown intrinsic size behind signed URLs, so next/image has no
+            width/height to work from.
+
+            `contain`, not the approved `cover`. The appendix prints each
+            photograph whole, inside a 7cm box with its aspect ratio kept
+            (`appendix-layout.ts`) — so a card that crops to a 150px band shows
+            something the document will never produce, and a portrait taken on a
+            phone appeared as a zoomed strip of its own middle. The grey ground
+            is the letterboxing, and it is honest about the shape of the frame. */}
         <img
           src={photo.src}
           alt={altText(photo, label)}
@@ -184,12 +201,38 @@ export function PhotoCard({
           style={{
             width: "100%",
             height: 150,
-            objectFit: "cover",
+            objectFit: "contain",
+            background: "var(--color-neutral-100)",
             display: "block",
             opacity: uploading || failed ? 0.45 : 1,
           }}
         />
         <span style={INDEX_TAG}>{label}</span>
+        {onMoveEarlier || onMoveLater ? (
+          <div
+            className="flex"
+            style={{ position: "absolute", top: 4, right: 4, gap: 3 }}
+          >
+            <IconButton
+              name="left"
+              label="Move one place earlier"
+              variant="secondary"
+              size={24}
+              iconSize={13}
+              disabled={!onMoveEarlier}
+              onClick={onMoveEarlier}
+            />
+            <IconButton
+              name="right"
+              label="Move one place later"
+              variant="secondary"
+              size={24}
+              iconSize={13}
+              disabled={!onMoveLater}
+              onClick={onMoveLater}
+            />
+          </div>
+        ) : null}
         {photo.category ? <span style={CATEGORY_TAG}>{photo.category}</span> : null}
         {showDragHandle && !uploading && !failed ? (
           <button

@@ -508,7 +508,10 @@ export function AppendixLayout({ photos, documentNumber }: AppendixLayoutProps) 
                           style={{
                             width: "100%",
                             height: cellHeight,
-                            objectFit: "cover",
+                            // The exporter fits the whole photograph into
+                            // the box and keeps its ratio, so a preview that
+                            // cropped was showing a page that cannot be printed.
+                            objectFit: "contain",
                             border: "1px solid var(--color-neutral-300)",
                             display: "block",
                           }}

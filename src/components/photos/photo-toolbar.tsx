@@ -4,7 +4,13 @@ import type { CSSProperties, ReactNode } from "react";
 
 import { Tag } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { IMAGE_REGION_GEOMETRY, type ImageRegion } from "@/types/domain";
+import { Select } from "@/components/ui/field";
+import {
+  IMAGE_REGIONS,
+  IMAGE_REGION_GEOMETRY,
+  IMAGE_REGION_LABELS,
+  type ImageRegion,
+} from "@/types/domain";
 
 /**
  * Photo manager toolbar — README §9–11.
@@ -28,6 +34,15 @@ export interface PhotoToolbarProps {
   selectedCount: number;
   allSelected: boolean;
   /**
+   * Move the selection to `region`.
+   *
+   * It used to be `onMoveSelected: () => void` against a destination the caller
+   * hardcoded — from the appendix, everything went to Main Products, with no
+   * say and no confirmation. Somebody arranging their appendix selected all,
+   * pressed it, and the section emptied. The destination is the user's now.
+   */
+  onMoveTo: (region: ImageRegion) => void;
+  /**
    * The upload control itself, not a callback.
    *
    * This used to be `onUpload: () => void`, wired to `uploadRef.current?.click()`
@@ -39,7 +54,6 @@ export interface PhotoToolbarProps {
   onGenerateAll: () => void;
   onToggleSelectAll: () => void;
   onArrange: () => void;
-  onMoveSelected: () => void;
   onDeleteSelected: () => void;
 }
 
@@ -74,7 +88,7 @@ export function PhotoToolbar({
   onGenerateAll,
   onToggleSelectAll,
   onArrange,
-  onMoveSelected,
+  onMoveTo,
   onDeleteSelected,
 }: PhotoToolbarProps) {
   const { columns, targetHeightCm } = IMAGE_REGION_GEOMETRY[region];
@@ -102,9 +116,24 @@ export function PhotoToolbar({
 
       {selectedCount > 0 ? (
         <>
-          <Button style={TOOLBAR_BUTTON} onClick={onMoveSelected}>
-            Move to section
-          </Button>
+          <Select
+            compact
+            aria-label={`Move ${selectedCount} selected to another section`}
+            value=""
+            onChange={(event) => {
+              const next = event.target.value;
+              event.target.value = "";
+              if (next) onMoveTo(next as ImageRegion);
+            }}
+            style={{ ...TOOLBAR_BUTTON, width: 178 }}
+          >
+            <option value="">Move to section…</option>
+            {IMAGE_REGIONS.filter((option) => option !== region).map((option) => (
+              <option key={option} value={option}>
+                {IMAGE_REGION_LABELS[option]}
+              </option>
+            ))}
+          </Select>
           <Button
             variant="destructive"
             style={TOOLBAR_BUTTON}
