@@ -514,6 +514,7 @@ export function rowToObservation(row: ReportObservationRow): Observation {
     priority: toPriority(row.priority),
     text: row.text,
     sourceFindingId: row.source_finding_id,
+    imageId: row.image_id,
   };
 }
 
@@ -538,6 +539,7 @@ export function observationToUpsert(
     priority: toPriority(values.priority),
     text: values.text.trim(),
     source_finding_id: values.sourceFindingId,
+    image_id: values.imageId,
     sort_order: sortOrder,
     created_by: userId,
   };

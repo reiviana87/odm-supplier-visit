@@ -227,6 +227,7 @@ const HUATONG_OBSERVATIONS: Observation[] = [
     priority: "Normal",
     text: "Five separate inspection stages are applied along the cable manufacturing process, from raw material to finished product.",
     sourceFindingId: "f0",
+    imageId: null,
   },
   {
     id: "obs-02",
@@ -234,6 +235,7 @@ const HUATONG_OBSERVATIONS: Observation[] = [
     priority: "Normal",
     text: "The rubber cable workshop reported 14,237,954 km of output and RMB 1.2 billion of value in 2025.",
     sourceFindingId: "f1",
+    imageId: null,
   },
   {
     id: "obs-03",
@@ -241,6 +243,7 @@ const HUATONG_OBSERVATIONS: Observation[] = [
     priority: "Normal",
     text: "Target production lead time is approximately 6 weeks.",
     sourceFindingId: "f2",
+    imageId: null,
   },
   {
     id: "obs-04",
@@ -248,6 +251,7 @@ const HUATONG_OBSERVATIONS: Observation[] = [
     priority: "Normal",
     text: "EBARA orders would be manufactured at the South Korea plant; the Panama plant is dedicated to oil and gas customers (Baker Hughes, Shell).",
     sourceFindingId: "f3",
+    imageId: null,
   },
 ];
 

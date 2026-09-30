@@ -15,7 +15,7 @@ import { TranscriptPanel } from "@/components/reports/transcript-panel";
 import { saveObservations } from "@/lib/data/report-actions";
 import { joinQaBullets, splitQaBullets } from "@/lib/data/report-mappers";
 import type { TranscriptSource } from "@/lib/data/transcript-actions";
-import type { Observation, Report } from "@/types/domain";
+import type { Observation, Report, ReportPhoto } from "@/types/domain";
 
 /**
  * §6 Visit Relevant Information — prototype lines 1070..1138 and the approved
@@ -85,6 +85,7 @@ function adoptStored(
  */
 function ObservationCard({
   observation,
+  photoSrc,
   index,
   editing,
   onToggleEdit,
@@ -94,6 +95,8 @@ function ObservationCard({
   onUnavailable,
 }: {
   observation: Observation;
+  /** The photograph taken with it in the field, already signed. */
+  photoSrc: string | undefined;
   index: number;
   editing: boolean;
   onToggleEdit: () => void;
@@ -106,6 +109,25 @@ function ObservationCard({
 
   return (
     <Blueprint style={{ padding: "11px 12px" }}>
+      {photoSrc ? (
+        /* Captured with the observation in Visit Mode (0008). The photograph
+           itself lives in the appendix; this is the same object, shown where
+           the sentence about it is. */
+        /* eslint-disable-next-line @next/next/no-img-element -- stored
+           photograph behind a signed URL, no known intrinsic size. */
+        <img
+          src={photoSrc}
+          alt={`Photograph taken with ${position}`}
+          style={{
+            width: "100%",
+            maxHeight: 180,
+            objectFit: "cover",
+            display: "block",
+            marginBottom: 9,
+            border: "1px solid var(--color-divider)",
+          }}
+        />
+      ) : null}
       <div className="flex items-center" style={{ gap: 7, marginBottom: 6 }}>
         {editing ? (
           <>
@@ -344,10 +366,13 @@ function QaBlock({ onExtract }: { onExtract: () => void }) {
 export function VisitSection({
   report,
   transcripts,
+  photos,
 }: {
   report: Report;
   /** The report's transcript sources — §6 hosts the paste field itself now. */
   transcripts: readonly TranscriptSource[];
+  /** Every stored photograph, so a card carrying an `imageId` can show it. */
+  photos: readonly ReportPhoto[];
 }) {
   const { toast } = useToast();
   const [view, setView] = useState<VisitView>("observations");
@@ -412,7 +437,7 @@ export function VisitSection({
     const id = `draft-${drafted.current}`;
     edit([
       ...observations,
-      { id, category: "", priority: "Normal", text: "", sourceFindingId: null },
+      { id, category: "", priority: "Normal", text: "", sourceFindingId: null, imageId: null },
     ]);
     setEditingId(id);
     setView("observations");
@@ -524,6 +549,11 @@ export function VisitSection({
                 <ObservationCard
                   key={observation.id}
                   observation={observation}
+                  photoSrc={
+                    observation.imageId
+                      ? photos.find((photo) => photo.id === observation.imageId)?.src
+                      : undefined
+                  }
                   index={index}
                   editing={editingId === observation.id}
                   onToggleEdit={() => {

@@ -344,6 +344,13 @@ export interface Observation {
   text: string;
   /** Set when the observation came from a transcript finding. */
   sourceFindingId: string | null;
+  /**
+   * The photograph captured with this observation in the field, if any.
+   *
+   * A `report_images` id, not bytes of its own (0008): the photograph is the
+   * same object the appendix prints, so it is stored once and captioned once.
+   */
+  imageId: string | null;
 }
 
 export interface TargetProduct {

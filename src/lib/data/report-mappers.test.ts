@@ -53,6 +53,7 @@ function observationRow(patch: Partial<ReportObservationRow> = {}): ReportObserv
     priority: "High",
     text: "  Copper conductor lot traceability stops at the drawing line.  ",
     source_finding_id: "finding-7",
+    image_id: null,
     sort_order: 0,
     created_at: "2026-08-12T09:00:00Z",
     updated_at: "2026-08-12T09:00:00Z",
@@ -407,6 +408,7 @@ describe("observation persistence", () => {
       priority: "High",
       text: "  Copper conductor lot traceability stops at the drawing line.  ",
       sourceFindingId: "finding-7",
+      imageId: null,
     });
 
     const row = observationToUpsert("rep-1", rowToObservation(observationRow()), 3, "user-1");
@@ -414,6 +416,26 @@ describe("observation persistence", () => {
     expect(row.text).toBe("Copper conductor lot traceability stops at the drawing line.");
     expect(row.category).toBe("Quality");
     expect(row.source_finding_id).toBe("finding-7");
+  });
+
+  it("carries the photograph taken with the observation, both ways", () => {
+    // 0008. The column was added after the mapper existed, and a field the
+    // mapper forgets is the quietest kind of data loss there is: the write
+    // succeeds, the row is correct, and the photograph is simply not on it.
+    const withPhoto = rowToObservation(
+      observationRow({ image_id: "11111111-2222-3333-4444-555555555555" }),
+    );
+    expect(withPhoto.imageId).toBe("11111111-2222-3333-4444-555555555555");
+    expect(observationToUpsert("rep-1", withPhoto, 0).image_id).toBe(
+      "11111111-2222-3333-4444-555555555555",
+    );
+
+    // An observation with no photograph writes null, not undefined: the upsert
+    // sends every key for every row, and a missing one would leave whatever the
+    // column already held.
+    const without = rowToObservation(observationRow());
+    expect(without.imageId).toBeNull();
+    expect(observationToUpsert("rep-1", without, 0).image_id).toBeNull();
   });
 
   it("reads a priority it does not recognise as Normal, and never as an escalation", () => {
@@ -431,9 +453,9 @@ describe("observation persistence", () => {
     // by `sort_order` on the way in, so the write has to put the array index
     // back or the §6 list reshuffles on the next read.
     const rows: Observation[] = [
-      { id: "a", category: "Quality", priority: "High", text: "A", sourceFindingId: null },
-      { id: "b", category: "Delivery", priority: "Normal", text: "B", sourceFindingId: null },
-      { id: "c", category: "Safety", priority: "Critical", text: "C", sourceFindingId: null },
+      { id: "a", category: "Quality", priority: "High", text: "A", sourceFindingId: null, imageId: null },
+      { id: "b", category: "Delivery", priority: "Normal", text: "B", sourceFindingId: null, imageId: null },
+      { id: "c", category: "Safety", priority: "Critical", text: "C", sourceFindingId: null, imageId: null },
     ];
 
     const upserts = rows.map((row, index) => observationToUpsert("rep-1", row, index));

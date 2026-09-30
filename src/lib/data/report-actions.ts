@@ -325,6 +325,10 @@ const observationsSchema = z.object({
       priority: z.string(),
       text: z.string(),
       sourceFindingId: z.string().nullable(),
+      // A uuid or nothing. An id that is not a uuid could only come from a
+      // client that made it up, and the foreign key would refuse it anyway —
+      // refusing it here makes the message a sentence rather than a 23503.
+      imageId: z.uuid().nullable(),
     }),
   ),
 });

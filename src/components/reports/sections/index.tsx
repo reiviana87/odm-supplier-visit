@@ -98,7 +98,7 @@ function sectionBody(
     case "target":
       return <TargetSection report={report} />;
     case "visit":
-      return <VisitSection report={report} transcripts={transcripts} />;
+      return <VisitSection report={report} transcripts={transcripts} photos={photos} />;
     case "certificates":
       return <CertificatesSection report={report} certificates={certificates} />;
     case "conclusion":

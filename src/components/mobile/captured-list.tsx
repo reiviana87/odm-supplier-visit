@@ -25,6 +25,8 @@ export interface CapturedItem {
   /** The category chip above the text, when the kind has one. */
   label?: string;
   text: string;
+  /** The photograph captured with this entry, already signed. */
+  imageSrc?: string;
 }
 
 export interface CapturedListProps {
@@ -96,6 +98,22 @@ export function CapturedList({
                 >
                   {item.label}
                 </div>
+              ) : null}
+              {item.imageSrc ? (
+                /* eslint-disable-next-line @next/next/no-img-element -- stored
+                   photograph behind a signed URL, no known intrinsic size. */
+                <img
+                  src={item.imageSrc}
+                  alt=""
+                  style={{
+                    width: "100%",
+                    maxHeight: 150,
+                    objectFit: "cover",
+                    display: "block",
+                    marginBottom: 7,
+                    border: "1px solid var(--color-divider)",
+                  }}
+                />
               ) : null}
               <Textarea
                 aria-label={`${title} ${index + 1}`}

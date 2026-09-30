@@ -319,6 +319,44 @@ export function VisitMode({
     [reportId, router, toast],
   );
 
+  /**
+   * Store one photograph immediately and hand back the row it became.
+   *
+   * The observation form needs an id to point at before its own Save runs, so
+   * this cannot wait for the caption sheet the way Take Photo does. It files to
+   * the appendix like every other photograph — the observation refers to it, it
+   * does not own it — and the returned object URL is only for the thumbnail on
+   * the form, which lives as long as the screen does.
+   */
+  const capturePhoto = useCallback(
+    async (file: File): Promise<{ id: string; src: string } | null> => {
+      const image = await prepareImage(file);
+      if (!image) {
+        toast(cannotRead(file), "error");
+        return null;
+      }
+
+      const result = await uploadReportPhoto({
+        reportId,
+        region: "APPENDIX_IMAGES",
+        fileName: image.file.name,
+        mimeType: image.file.type || "image/jpeg",
+        width: image.width,
+        height: image.height,
+        capturedAt: file.lastModified ? new Date(file.lastModified).toISOString() : null,
+        file: image.file,
+      });
+      if (!result.ok) {
+        toast(result.error.message, "error");
+        return null;
+      }
+
+      router.refresh();
+      return { id: result.data.id, src: URL.createObjectURL(image.file) };
+    },
+    [reportId, router, toast],
+  );
+
   /** Replace §6's observation cards. */
   const writeObservations = useCallback(
     async (next: readonly Observation[]): Promise<boolean> => {
@@ -382,7 +420,11 @@ export function VisitMode({
    * a factory and may have no signal; losing what they just typed because the
    * write did not land is the one outcome worth designing against.
    */
-  async function fileObservation(values: { category: string; text: string }) {
+  async function fileObservation(values: {
+    category: string;
+    text: string;
+    imageId: string | null;
+  }) {
     // A category alone is not an observation, and `saveObservations` would take
     // the row because the category is never blank. Said in a toast rather than
     // by disabling Save: the approved button has one painted state.
@@ -405,6 +447,7 @@ export function VisitMode({
         priority: "Normal",
         text: values.text,
         sourceFindingId: null,
+        imageId: values.imageId,
       },
     ]);
     setSaving(false);
@@ -518,6 +561,8 @@ export function VisitMode({
       {pending.length === 0 && screen === "observation" ? (
         <ObservationForm
           observations={filed}
+          photos={photos}
+          onCapturePhoto={capturePhoto}
           onReplace={writeObservations}
           saving={saving}
           onCancel={() => setScreen("home")}

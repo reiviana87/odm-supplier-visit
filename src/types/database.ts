@@ -691,6 +691,8 @@ export type Database = {
           text: string;
           /** Free text, not an FK: findings live inside an AI generation's jsonb. */
           source_finding_id: string | null;
+          /** 0008 — the photograph captured with this observation, if any. */
+          image_id: string | null;
           sort_order: number;
           created_at: string;
           updated_at: string;
@@ -703,6 +705,7 @@ export type Database = {
           priority?: string;
           text?: string;
           source_finding_id?: string | null;
+          image_id?: string | null;
           sort_order?: number;
           created_at?: string;
           updated_at?: string;
@@ -715,6 +718,7 @@ export type Database = {
           priority?: string;
           text?: string;
           source_finding_id?: string | null;
+          image_id?: string | null;
           sort_order?: number;
           created_at?: string;
           updated_at?: string;
@@ -726,6 +730,13 @@ export type Database = {
             columns: ["report_id"];
             isOneToOne: false;
             referencedRelation: "reports";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "report_observations_image_id_fkey";
+            columns: ["image_id"];
+            isOneToOne: false;
+            referencedRelation: "report_images";
             referencedColumns: ["id"];
           },
           {

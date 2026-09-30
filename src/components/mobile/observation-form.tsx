@@ -1,10 +1,10 @@
 "use client";
 
-import { useId, useState, type CSSProperties } from "react";
+import { useId, useRef, useState, type CSSProperties } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Field, Textarea } from "@/components/ui/field";
-import type { Observation } from "@/types/domain";
+import type { Observation, ReportPhoto } from "@/types/domain";
 
 import { CapturedList } from "./captured-list";
 
@@ -64,17 +64,34 @@ const GROUP_LABEL: CSSProperties = {
 export interface ObservationFormProps {
   /** §6's observation cards as they stand. */
   observations: readonly Observation[];
+  /**
+   * Every stored photograph, so a card carrying an `imageId` can show it.
+   *
+   * Passed in rather than fetched: the screen already has them, and a second
+   * read would only be a chance for the two to disagree.
+   */
+  photos: readonly ReportPhoto[];
+  /**
+   * Store a photograph and hand back the row it became.
+   *
+   * The write belongs to `VisitMode`, which owns every other write on this
+   * screen; this form only knows that it now has an id to attach. Null means
+   * the file could not be read or stored, and the caller has already said so.
+   */
+  onCapturePhoto: (file: File) => Promise<{ id: string; src: string } | null>;
   /** Replace the whole set — `saveObservations` takes the list, not a patch. */
   onReplace: (next: readonly Observation[]) => Promise<boolean>;
   /** The write is in flight — README §5's in-progress control state. */
   saving?: boolean;
   onCancel: () => void;
-  /** Hands the two captured fields up; the caller owns the write. */
-  onSave: (values: { category: string; text: string }) => void;
+  /** Hands the captured fields up; the caller owns the write. */
+  onSave: (values: { category: string; text: string; imageId: string | null }) => void;
 }
 
 export function ObservationForm({
   observations,
+  photos,
+  onCapturePhoto,
   onReplace,
   saving = false,
   onCancel,
@@ -82,6 +99,12 @@ export function ObservationForm({
 }: ObservationFormProps) {
   const [category, setCategory] = useState(CATEGORIES[0]);
   const [text, setText] = useState("");
+  const photoRef = useRef<HTMLInputElement>(null);
+  // The photograph attached to the observation being written, once it is
+  // stored. It is stored before Save rather than with it, because the row needs
+  // an id to point at and the upload is the thing that assigns one.
+  const [attached, setAttached] = useState<{ id: string; src: string } | null>(null);
+  const [attaching, setAttaching] = useState(false);
   // Re-taken from the server whenever a write lands, so an observation just
   // saved joins the list below without a reload (see note-form.tsx).
   const [cards, setCards] = useState<readonly Observation[]>(observations);
@@ -91,6 +114,16 @@ export function ObservationForm({
     setCards(observations);
   }
   const [busy, setBusy] = useState(false);
+
+  /** A stored photograph by id — what a card needs in order to draw one. */
+  const srcById = new Map(photos.map((photo) => [photo.id, photo.src]));
+
+  async function attach(file: File | undefined) {
+    if (!file) return;
+    setAttaching(true);
+    setAttached(await onCapturePhoto(file));
+    setAttaching(false);
+  }
 
   async function replace(next: readonly Observation[]) {
     setCards(next);
@@ -171,6 +204,68 @@ export function ObservationForm({
         />
       </Field>
 
+      {/* No `capture`: the phone offers its camera and its album, the same
+          choice Take Photo makes. */}
+      <input
+        ref={photoRef}
+        type="file"
+        accept="image/*"
+        hidden
+        onChange={(event) => {
+          void attach(event.target.files?.[0]);
+          event.target.value = "";
+        }}
+      />
+
+      <div style={{ marginBottom: 14 }}>
+        {attached ? (
+          <>
+            {/* eslint-disable-next-line @next/next/no-img-element -- stored
+                photograph behind a signed URL, no known intrinsic size. */}
+            <img
+              src={attached.src}
+              alt=""
+              style={{
+                width: "100%",
+                maxHeight: 170,
+                objectFit: "cover",
+                display: "block",
+                marginBottom: 7,
+                border: "1px solid var(--color-divider)",
+              }}
+            />
+            <div style={{ display: "flex", gap: 7 }}>
+              <Button
+                variant="secondary"
+                disabled={attaching || saving}
+                onClick={() => photoRef.current?.click()}
+                style={{ fontSize: 13, minHeight: 44, flex: 1 }}
+              >
+                Replace photo
+              </Button>
+              <Button
+                variant="secondary"
+                disabled={attaching || saving}
+                onClick={() => setAttached(null)}
+                style={{ fontSize: 13, minHeight: 44, flex: 1 }}
+              >
+                Remove
+              </Button>
+            </div>
+          </>
+        ) : (
+          <Button
+            variant="secondary"
+            block
+            disabled={attaching || saving}
+            onClick={() => photoRef.current?.click()}
+            style={{ fontSize: 13, minHeight: 44 }}
+          >
+            {attaching ? "Storing the photograph\u2026" : "Add a photo (optional)"}
+          </Button>
+        )}
+      </div>
+
       <div style={{ display: "flex", gap: 9 }}>
         <Button
           variant="secondary"
@@ -183,7 +278,10 @@ export function ObservationForm({
         <Button
           variant="primary"
           loading={saving}
-          onClick={() => onSave({ category, text })}
+          onClick={() => {
+            onSave({ category, text, imageId: attached?.id ?? null });
+            setAttached(null);
+          }}
           style={{ fontSize: 14, minHeight: 48, flex: 2 }}
         >
           Save
@@ -197,6 +295,7 @@ export function ObservationForm({
           key: card.id || String(index),
           label: card.category.trim() === "" ? "No category" : card.category,
           text: card.text,
+          imageSrc: card.imageId ? srcById.get(card.imageId) : undefined,
         }))}
         busy={busy || saving}
         onChange={(index, value) =>

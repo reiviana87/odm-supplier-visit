@@ -119,6 +119,7 @@ export function TranscriptPanel({
             priority: "Normal",
             text: finding.text,
             sourceFindingId: null,
+            imageId: null,
           },
         ];
 
