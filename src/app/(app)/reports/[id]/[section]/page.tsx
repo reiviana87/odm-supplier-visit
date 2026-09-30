@@ -7,6 +7,7 @@ import { PageHeader, PageShell } from "@/components/ui/page-header";
 import { EmptyState } from "@/components/ui/states";
 import { listReportPhotos } from "@/lib/data/photo-actions";
 import { getReport } from "@/lib/data/reports";
+import { signCertificateUrls } from "@/lib/data/supplier-actions";
 import { getSupplierCertificates } from "@/lib/data/suppliers";
 import { listTranscripts } from "@/lib/data/transcript-actions";
 import { REPORT_PHOTOS } from "@/lib/mock-data";
@@ -97,6 +98,17 @@ export default async function ReportSectionPage({ params }: EditorPageProps) {
       ? await getSupplierCertificates(report.supplierSnapshot.supplierId)
       : null;
 
+  // The collected copies live in a private bucket, so the card cannot link to
+  // one without a signed URL. Signed in one batch here rather than per card.
+  const copyPaths =
+    certificates?.ok
+      ? certificates.data
+          .map((certificate) => certificate.storagePath)
+          .filter((path): path is string => Boolean(path))
+      : [];
+  const signedCopies = copyPaths.length > 0 ? await signCertificateUrls(copyPaths) : null;
+  const certificateCopyUrls = signedCopies?.ok ? signedCopies.data : {};
+
   return (
     <ReportEditor
       report={report}
@@ -111,6 +123,7 @@ export default async function ReportSectionPage({ params }: EditorPageProps) {
         photos,
         transcripts.ok ? transcripts.data : [],
         certificates?.ok ? certificates.data : undefined,
+        certificateCopyUrls,
       )}
     </ReportEditor>
   );

@@ -237,6 +237,8 @@ export interface SupplierCertificate {
   expirationDate: string;
   status: CertificateStatus;
   fileName: string | null;
+  /** Object path in the private `supplier-files` bucket; null until a copy is collected. */
+  storagePath: string | null;
   notes: string | null;
   sortOrder: number;
 }

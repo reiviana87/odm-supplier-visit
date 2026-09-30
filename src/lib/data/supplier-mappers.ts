@@ -203,6 +203,7 @@ export function rowToCertificate(row: SupplierCertificateRow): SupplierCertifica
     expirationDate: toCertificateDate(row.expiration_date),
     status: row.status,
     fileName: row.file_name,
+    storagePath: row.storage_path,
     notes: row.notes,
     sortOrder: row.sort_order,
   };

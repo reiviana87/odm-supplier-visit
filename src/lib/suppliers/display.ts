@@ -55,6 +55,7 @@ export function declaredCertificates(
       expirationDate: "",
       status: "declared" as const,
       fileName: null,
+      storagePath: null,
       notes: null,
       sortOrder: index,
     }));

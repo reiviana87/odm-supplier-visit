@@ -80,6 +80,7 @@ function sectionBody(
   report: Report,
   photos: readonly ReportPhoto[],
   certificates: readonly SupplierCertificate[] | undefined,
+  certificateCopyUrls: Readonly<Record<string, string>>,
   transcripts: readonly TranscriptSource[],
 ): ReactNode {
   switch (sectionId) {
@@ -100,7 +101,13 @@ function sectionBody(
     case "visit":
       return <VisitSection report={report} transcripts={transcripts} photos={photos} />;
     case "certificates":
-      return <CertificatesSection report={report} certificates={certificates} />;
+      return (
+        <CertificatesSection
+          report={report}
+          certificates={certificates}
+          copyUrls={certificateCopyUrls}
+        />
+      );
     case "conclusion":
       // The conclusion is its section's body, which the editor draft holds.
       return <ConclusionSection reportId={report.id} />;
@@ -124,13 +131,14 @@ export function renderSection(
   photos: readonly ReportPhoto[],
   transcripts: readonly TranscriptSource[],
   certificates?: readonly SupplierCertificate[],
+  certificateCopyUrls: Readonly<Record<string, string>> = {},
 ): ReactNode {
   const definition =
     SECTIONS.find((section) => section.id === sectionId) ?? SECTIONS[0];
 
   return (
     <SectionFrame number={definition.number} title={definition.label}>
-      {sectionBody(sectionId, report, photos, certificates, transcripts)}
+      {sectionBody(sectionId, report, photos, certificates, certificateCopyUrls, transcripts)}
     </SectionFrame>
   );
 }

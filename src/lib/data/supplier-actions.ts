@@ -21,6 +21,12 @@ import { revalidatePath } from "next/cache";
 import { canEdit, canManage } from "@/lib/auth/roles";
 import { getCurrentUser } from "@/lib/auth/session";
 import {
+  ACCEPTED_CERTIFICATE_MIME,
+  CERTIFICATE_URL_TTL_SECONDS,
+  MAX_CERTIFICATE_BYTES,
+  SUPPLIER_BUCKET,
+} from "@/lib/data/certificate-limits";
+import {
   fail,
   ok,
   toDataError,
@@ -705,4 +711,104 @@ export async function deleteCertificate(id: string): Promise<DataResult<{ id: st
 
   revalidateSuppliers(owner.data);
   return ok({ id });
+}
+
+/**
+ * The copy of a certificate collected during a visit.
+ *
+ * README §19 calls §7 "photo-first": what is worth having is the scan, and the
+ * three fields are what somebody typed off it. The bytes go to the same private
+ * `supplier-files` bucket the data sheets use, under the supplier that owns
+ * them, and the row records the name so the card can say what it is holding.
+ *
+ * The object path is decided here rather than in the browser, and the row is
+ * only updated once the upload has actually landed — a path recorded for an
+ * object that does not exist is worse than no path at all, because the card
+ * would then claim a copy nobody can open.
+ */
+export async function uploadCertificateFile(
+  supplierId: string,
+  certificateId: string,
+  file: File,
+): Promise<DataResult<{ id: string; fileName: string }>> {
+  const session = await beginWrite(canEdit);
+  if (!session.ok) return session;
+
+  const owner = await ownerOf(session.data, "supplier_certificates", certificateId);
+  if (!owner.ok) return owner;
+  if (owner.data !== supplierId) return fail("not_found");
+
+  if (file.size === 0) return fail("invalid", "That file is empty.");
+  if (file.size > MAX_CERTIFICATE_BYTES) {
+    return fail(
+      "invalid",
+      `That file is ${(file.size / 1024 / 1024).toFixed(1)} MB. The limit is ${
+        MAX_CERTIFICATE_BYTES / 1024 / 1024
+      } MB.`,
+    );
+  }
+  if (!ACCEPTED_CERTIFICATE_MIME.includes(file.type)) {
+    return fail(
+      "invalid",
+      "A certificate copy has to be a JPEG, a PNG or a PDF page.",
+    );
+  }
+
+  const extension = file.type === "application/pdf" ? "pdf" : file.type === "image/png" ? "png" : "jpg";
+  const storagePath = `${supplierId}/certificates/${certificateId}.${extension}`;
+
+  const upload = await session.data.client.storage
+    .from(SUPPLIER_BUCKET)
+    .upload(storagePath, file, { contentType: file.type, upsert: true });
+  if (upload.error) return failWith(toDataError(upload.error, "uploadCertificateFile"));
+
+  const { data, error } = await session.data.client
+    .from("supplier_certificates")
+    .update({
+      file_name: file.name,
+      storage_path: storagePath,
+      // A copy in hand is what "valid" means here — README §1.7. The dates are
+      // still whatever somebody typed; this only records that the paper exists.
+      status: "valid",
+    })
+    .eq("id", certificateId)
+    .eq("supplier_id", supplierId)
+    .select("id")
+    .maybeSingle();
+
+  if (error) return failWith(writeError(error, "uploadCertificateFile"));
+  if (!data) {
+    // The row went while the bytes were in flight. Take the object back out
+    // rather than leaving it behind a row that no longer refers to it.
+    await session.data.client.storage.from(SUPPLIER_BUCKET).remove([storagePath]);
+    return fail("not_found");
+  }
+
+  revalidateSuppliers(supplierId);
+  return ok({ id: data.id, fileName: file.name });
+}
+
+/** Signed URLs for certificate copies, keyed by storage path. */
+export async function signCertificateUrls(
+  paths: readonly string[],
+): Promise<DataResult<Record<string, string>>> {
+  if (paths.length === 0) return ok({});
+
+  const user = await getCurrentUser();
+  if (!user) return fail("unauthenticated");
+
+  const client = await getServerSupabase();
+  if (!client) return fail("offline");
+
+  const { data, error } = await client.storage
+    .from(SUPPLIER_BUCKET)
+    .createSignedUrls([...paths], CERTIFICATE_URL_TTL_SECONDS);
+
+  if (error) return failWith(toDataError(error, "signCertificateUrls"));
+
+  const urls: Record<string, string> = {};
+  for (const entry of data ?? []) {
+    if (entry.signedUrl && entry.path) urls[entry.path] = entry.signedUrl;
+  }
+  return ok(urls);
 }
