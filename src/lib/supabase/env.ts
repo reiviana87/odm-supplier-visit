@@ -72,8 +72,14 @@ export function isSupabaseConfigured(): boolean {
  * call site outside a component.
  */
 export function isMockMode(): boolean {
-  const flag = clean(process.env.NEXT_PUBLIC_USE_MOCK_DATA);
-  if (flag !== "false") return true;
+  // Fails CLOSED. This used to read "anything that is not the exact string
+  // 'false' means demo", so a variable that was missing, misspelled, or set to
+  // "0" or "FALSE" put a production deployment on seeded fixtures — showing a
+  // stranger's factory as the user's own work and refusing every write with a
+  // sentence about demo data. Demo mode is now something you ask for, and the
+  // only other way in is having no project to talk to at all.
+  const flag = clean(process.env.NEXT_PUBLIC_USE_MOCK_DATA)?.toLowerCase();
+  if (flag === "true" || flag === "1") return true;
   return !isSupabaseConfigured();
 }
 

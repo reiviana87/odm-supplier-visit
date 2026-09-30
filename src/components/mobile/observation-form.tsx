@@ -85,7 +85,11 @@ export interface ObservationFormProps {
   saving?: boolean;
   onCancel: () => void;
   /** Hands the captured fields up; the caller owns the write. */
-  onSave: (values: { category: string; text: string; imageId: string | null }) => void;
+  onSave: (values: {
+    category: string;
+    text: string;
+    imageId: string | null;
+  }) => Promise<boolean>;
 }
 
 export function ObservationForm({
@@ -278,9 +282,15 @@ export function ObservationForm({
         <Button
           variant="primary"
           loading={saving}
-          onClick={() => {
-            onSave({ category, text, imageId: attached?.id ?? null });
-            setAttached(null);
+          onClick={async () => {
+            // Both cleared only on success. `setAttached(null)` used to run
+            // beside the call rather than after it, so a save that failed left
+            // the user looking at a form with the photograph already detached —
+            // on exactly the flaky connection the form was designed for.
+            if (await onSave({ category, text, imageId: attached?.id ?? null })) {
+              setAttached(null);
+              setText("");
+            }
           }}
           style={{ fontSize: 14, minHeight: 48, flex: 2 }}
         >

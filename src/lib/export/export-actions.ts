@@ -54,9 +54,23 @@ export interface ExportedDocx {
 }
 
 /** One photo's bytes are not worth failing an export over, but silence is. */
+/** What `docx` accepts, from what the browser recorded at upload. */
+function imageType(mime: string | undefined, path: string): ExportImage["type"] {
+  if (mime === "image/png") return "png";
+  if (mime === "image/gif") return "gif";
+  if (mime === "image/bmp") return "bmp";
+  if (mime === "image/jpeg") return "jpg";
+  // WebP has no place in the OOXML drawing spec, so Word cannot render it
+  // whatever it is labelled. `prepare-image.ts` converts everything a phone or
+  // a picker produces into JPEG before upload, so this is the old rows only.
+  if (mime === "image/webp") return "jpg";
+  return path.endsWith(".png") ? "png" : "jpg";
+}
+
 async function loadImages(
   photos: readonly ReportPhoto[],
   paths: Map<string, string>,
+  mimeTypes: Map<string, string>,
 ): Promise<{ images: Map<string, ExportImage>; skipped: string[] }> {
   const images = new Map<string, ExportImage>();
   const skipped: string[] = [];
@@ -78,7 +92,7 @@ async function loadImages(
     }
 
     const bytes = Buffer.from(await file.data.arrayBuffer());
-    const type = path.endsWith(".png") ? "png" : "jpg";
+    const type = imageType(mimeTypes.get(photo.id), path);
 
     images.set(photo.id, {
       data: bytes,
@@ -179,24 +193,40 @@ export async function exportReportDocx(reportId: string): Promise<DataResult<Exp
   if (!result.ok) return fail(result.error.code, result.error.message);
   const { report } = result.data;
 
+  // A failed read used to collapse to an empty list, so a visit with forty
+  // photographs exported as a report with none — and said "downloaded". The
+  // one outcome a document must never have is looking complete while missing
+  // the evidence, so this refuses instead.
   const photoResult = await listReportPhotos(reportId);
-  const photos = photoResult.ok ? photoResult.data : [];
+  if (!photoResult.ok) {
+    return fail(
+      photoResult.error.code,
+      "The photographs could not be read, so the document would have been generated without them. " +
+        "Nothing was exported — try again in a moment.",
+    );
+  }
+  const photos = photoResult.data;
 
   // `listReportPhotos` hands back signed URLs, not paths, so the storage paths
   // are read again here — the exporter needs the object, not a link to it.
   const client = await getServerSupabase();
   const paths = new Map<string, string>();
+  // Word has to be told the format. It was guessed from the file extension,
+  // which made every non-.png object a "jpg" — so a WebP went into the document
+  // declared as JPEG and rendered as a broken image box.
+  const mimeTypes = new Map<string, string>();
   if (client) {
     const { data } = await client
       .from("report_images")
-      .select("id, storage_path")
+      .select("id, storage_path, mime_type")
       .eq("report_id", reportId);
     for (const row of data ?? []) {
       if (row.storage_path) paths.set(row.id, row.storage_path);
+      if (row.mime_type) mimeTypes.set(row.id, row.mime_type);
     }
   }
 
-  const { images, skipped } = await loadImages(photos, paths);
+  const { images, skipped } = await loadImages(photos, paths, mimeTypes);
 
   // §7 prints the supplier's certificates, which live on the supplier rather
   // than on the report. A failed read is not worth losing the export over: the

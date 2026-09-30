@@ -51,7 +51,7 @@ export interface NoteFormProps {
    * moved a counter, and what the user typed standing in a factory was thrown
    * away. Handing the text up is the whole fix.
    */
-  onSave: (text: string) => void;
+  onSave: (text: string) => Promise<boolean>;
   /** The write is in flight — README §5's in-progress control state. */
   saving?: boolean;
 }
@@ -117,7 +117,12 @@ export function NoteForm({
         </Button>
         <Button
           variant="primary"
-          onClick={() => onSave(text)}
+          onClick={async () => {
+            // Cleared only once the write has landed. Leaving the text in the
+            // box let a second tap file the same note twice; clearing it before
+            // the answer came back would have lost it on a failure.
+            if (await onSave(text)) setText("");
+          }}
           disabled={saving}
           style={{ fontSize: 14, minHeight: 48, flex: 2 }}
         >

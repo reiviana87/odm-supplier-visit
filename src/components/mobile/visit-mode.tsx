@@ -267,6 +267,12 @@ export function VisitMode({
       let note: string;
 
       if (mode === "ai") {
+        // Whatever was typed is KEPT, even on this branch. It used to travel
+        // only as a `hint:` to the model and was never written anywhere, so
+        // tapping "AI caption later" with words already in the box threw them
+        // away — the one thing this screen exists to stop.
+        if (text !== "") await updatePhotoCaption(result.data.id, text);
+
         // The button says the model will caption it, so the model is asked —
         // here, not "later" in some queue that does not exist. The proposal
         // lands in ai_caption and waits to be accepted at a desk, which is the
@@ -401,11 +407,11 @@ export function VisitMode({
    * version is the current one rather than whatever the phone loaded when the
    * visit started.
    */
-  async function fileNote(text: string) {
+  async function fileNote(text: string): Promise<boolean> {
     const note = text.trim();
     if (note === "") {
       toast("Write the note before saving it.", "warning");
-      return;
+      return false;
     }
 
     setSaving(true);
@@ -416,15 +422,16 @@ export function VisitMode({
     if (!record.ok) {
       setSaving(false);
       toast(record.error.message, "error");
-      return;
+      return false;
     }
     const saved = await writeKeyPoints([...splitQaBullets(record.data.body), note]);
     setSaving(false);
-    if (!saved) return;
+    if (!saved) return false;
 
     // Deliberately stays on the screen: the answer to "where did that go?" is
     // the list underneath, which the note has just joined.
     toast(`Saved to §6 key points · ${keyPoints.length + 1} on this report`);
+    return true;
   }
 
   /**
@@ -479,13 +486,13 @@ export function VisitMode({
     category: string;
     text: string;
     imageId: string | null;
-  }) {
+  }): Promise<boolean> {
     // A category alone is not an observation, and `saveObservations` would take
     // the row because the category is never blank. Said in a toast rather than
     // by disabling Save: the approved button has one painted state.
     if (values.text.trim() === "") {
       toast("Write the observation before saving it.", "warning");
-      return;
+      return false;
     }
 
     setSaving(true);
@@ -509,11 +516,12 @@ export function VisitMode({
 
     if (!result.ok) {
       toast(result.error.message, "error");
-      return;
+      return false;
     }
 
     setFiled(result.data);
     toast(`Observation saved to §6 · ${result.data.length} on this report`);
+    return true;
   }
 
   function handleAction(action: QuickActionId) {

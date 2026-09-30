@@ -67,6 +67,37 @@ export interface ExportImage {
   height: number;
 }
 
+/**
+ * The caption the document prints.
+ *
+ * ONLY what a person wrote or accepted. `ai_caption` holds a proposal the
+ * author has not agreed to — §16 is explicit that a model's words become the
+ * caption on acceptance and not before — and the exporter used to fall through
+ * to it whenever `caption` was empty. So a proposal nobody had read, or one the
+ * author had deliberately cleared, was printed in a signed report as if they
+ * had written it. An em dash says "no caption" honestly; a sentence somebody
+ * did not write does not.
+ */
+export function printableCaption(photo: ReportPhoto): string {
+  const written = photo.caption.trim();
+  if (written) return written;
+  // An accepted proposal IS the author's caption — `acceptPhotoCaption` and the
+  // card's Accept both write it into `caption`, so this only catches a row that
+  // recorded acceptance without copying the text across.
+  if (photo.captionState === "accepted" && photo.aiCaption.trim()) {
+    return photo.aiCaption.trim();
+  }
+  return "\u2014";
+}
+
+/** "09:30 – 16:45", or whichever end of it was recorded. */
+export function visitHours(report: Report): string {
+  const start = report.startTime?.trim() ?? "";
+  const end = report.endTime?.trim() ?? "";
+  if (start && end) return `${start} \u2013 ${end}`;
+  return start || end;
+}
+
 export interface BuildDocxInput {
   report: Report;
   photos: readonly ReportPhoto[];
@@ -215,7 +246,7 @@ function inlinePhoto(photo: ReportPhoto, image: ExportImage): Paragraph[] {
       spacing: { after: 200 },
       children: [
         new TextRun({
-          text: photo.caption.trim() || photo.aiCaption.trim() || "—",
+          text: printableCaption(photo),
           italics: true,
           size: pt(9),
           color: MUTED,
@@ -282,7 +313,7 @@ function appendixTables(
               alignment: AlignmentType.CENTER,
               children: [
                 new TextRun({
-                  text: photo.caption.trim() || photo.aiCaption.trim() || "—",
+                  text: printableCaption(photo),
                   size: pt(8.5),
                   color: MUTED,
                   font: FONT,
@@ -434,6 +465,9 @@ export async function buildReportDocx(input: BuildDocxInput): Promise<Buffer> {
     ["Employee", report.employee || report.reportOwner],
     ["Period", report.period],
     ["Visit Date", report.visitDate],
+    // Stored by General Information and printed by neither exporter until the
+    // audit looked: a reader could not tell a two-hour call from a day's audit.
+    ["Hours", visitHours(report)],
     ["Location", report.location],
     ["Members", report.members.join(", ")],
     // The audit found these three stored and never printed.

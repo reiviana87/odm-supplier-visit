@@ -32,7 +32,7 @@
 
 import { deflateRawSync, inflateRawSync } from "node:zlib";
 
-import type { ExportImage } from "@/lib/export/docx";
+import { printableCaption, visitHours, type ExportImage } from "@/lib/export/docx";
 import { photoBoxPt, planAppendix } from "@/lib/reports/appendix-layout";
 import {
   IMAGE_REGION_GEOMETRY,
@@ -670,7 +670,8 @@ function photoCell(content: string, widthTwips: number): string {
 }
 
 function captionOf(photo: ReportPhoto): string {
-  return photo.caption.trim() || photo.aiCaption.trim() || "—";
+  // One rule for both exporters — see `printableCaption` in docx.ts.
+  return printableCaption(photo);
 }
 
 /**
@@ -868,8 +869,10 @@ function documentBody(input: TemplateReportInput, shell: Shell, media: MediaRegi
    * document at all. The built-in layout printed most of them; the one the
    * company actually sends did not.
    */
+  const hours = visitHours(report);
   const visitFacts: string[] = [
     `Visit date: ${report.visitDate}`,
+    hours ? `Hours: ${hours}` : "",
     report.location ? `Location: ${report.location}` : "",
     report.members.length ? `Members: ${report.members.join(", ")}` : "",
     report.project ? `Project: ${report.project}` : "",

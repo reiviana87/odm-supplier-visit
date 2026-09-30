@@ -100,8 +100,10 @@ function ObservationCard({
   index: number;
   editing: boolean;
   onToggleEdit: () => void;
-  onChange: (patch: Partial<Observation>) => void;
-  onCommit: () => void;
+  /** Apply a patch, and hand back the list it produced so a save can use it. */
+  onChange: (patch: Partial<Observation>) => readonly Observation[];
+  /** Save. Given a list, saves that one rather than the component's state. */
+  onCommit: (next?: readonly Observation[]) => void;
   onDelete: () => void;
   onUnavailable: (message: string) => void;
 }) {
@@ -137,7 +139,7 @@ function ObservationCard({
               aria-label={`Category of ${position}`}
               placeholder="Category"
               onChange={(event) => onChange({ category: event.target.value })}
-              onBlur={onCommit}
+              onBlur={() => onCommit()}
               style={{ width: 190, fontSize: 11.5 }}
             />
             <Select
@@ -145,10 +147,11 @@ function ObservationCard({
               value={observation.priority}
               aria-label={`Priority of ${position}`}
               onChange={(event) => {
-                onChange({
-                  priority: event.target.value as Observation["priority"],
-                });
-                onCommit();
+                // The patched list goes straight to the save. Reading state
+                // here would send the priority the card had a moment ago.
+                onCommit(
+                  onChange({ priority: event.target.value as Observation["priority"] }),
+                );
               }}
               style={{ width: 104, fontSize: 11.5 }}
             >
@@ -201,7 +204,7 @@ function ObservationCard({
           aria-label={`Text of ${position}`}
           placeholder="What was seen, said or measured…"
           onChange={(event) => onChange({ text: event.target.value })}
-          onBlur={onCommit}
+          onBlur={() => onCommit()}
           minHeight={64}
           style={{ fontSize: 13, lineHeight: 1.6, background: "var(--color-bg)" }}
         />
@@ -410,13 +413,22 @@ export function VisitSection({
     [report.id, toast],
   );
 
+  /**
+   * Apply a patch and hand back the list it produced.
+   *
+   * The list is returned because a caller that patches and then saves in the
+   * same handler cannot use `observations`: the state has not advanced yet, so
+   * it would write the values from before the change. The priority dropdown did
+   * exactly that — it saved the OLD priority and then visibly snapped back to
+   * it when the stored rows came home.
+   */
   const patchObservation = useCallback(
-    (id: string, patch: Partial<Observation>) => {
-      edit(
-        observations.map((observation) =>
-          observation.id === id ? { ...observation, ...patch } : observation,
-        ),
+    (id: string, patch: Partial<Observation>): readonly Observation[] => {
+      const next = observations.map((observation) =>
+        observation.id === id ? { ...observation, ...patch } : observation,
       );
+      edit(next);
+      return next;
     },
     [edit, observations],
   );
@@ -566,7 +578,7 @@ export function VisitSection({
                     persist(observations);
                   }}
                   onChange={(patch) => patchObservation(observation.id, patch)}
-                  onCommit={() => persist(observations)}
+                  onCommit={(next) => persist(next ?? observations)}
                   onDelete={() => deleteObservation(observation.id)}
                   onUnavailable={toast}
                 />
