@@ -38,7 +38,9 @@ const ACTIONS: readonly QuickAction[] = [
   { id: "photo", label: "Take Photo", icon: "camera" },
   { id: "note", label: "Add Note", icon: "note" },
   { id: "observation", label: "Add Observation", icon: "list" },
-  { id: "upload", label: "Upload File", icon: "upload" },
+  // "Upload File" was a lie the user found on their own: the picker it opens
+  // is accept="image/*". Documents are not stored from the phone at all.
+  { id: "upload", label: "Upload Photos", icon: "upload" },
   { id: "voice", label: "Voice / Transcript", icon: "mic" },
   { id: "report", label: "View Report", icon: "file" },
 ];

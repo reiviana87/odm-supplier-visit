@@ -18,6 +18,11 @@ import {
   saveSection,
 } from "@/lib/data/report-actions";
 import { joinQaBullets, splitQaBullets } from "@/lib/data/report-mappers";
+import {
+  deleteTranscript,
+  saveTranscript,
+  type TranscriptSource,
+} from "@/lib/data/transcript-actions";
 import { prepareImage } from "@/lib/photos/prepare-image";
 import {
   IMAGE_REGIONS,
@@ -31,6 +36,7 @@ import {
 
 import { CaptionSheet } from "./caption-sheet";
 import { NoteForm } from "./note-form";
+import { TranscriptForm } from "./transcript-form";
 import { ObservationForm } from "./observation-form";
 import { QuickActionGrid, type QuickActionId } from "./quick-action-grid";
 import { VisitHeader } from "./visit-header";
@@ -54,14 +60,24 @@ import { VisitHeader } from "./visit-header";
  *   · offline sync is not built — the weak-signal banner is real UI, nothing is
  *     queued or replayed, and the count beside it now says zero rather than
  *     inventing a depth;
- *   · voice capture is not built — its tile says so instead of pretending.
+ *   · transcripts ARE stored — recording audio is not built, and the tile no
+ *     longer pretends otherwise: it opens the field the text goes into, which
+ *     the phone's own dictation key can fill;
+ *   · Upload Photos is named for what its picker accepts. It said "Upload
+ *     File" and took image/* only.
  *
  * There is no mock viewfinder any more. `capture="environment"` hands the
  * phone's own camera back as a file, which is both simpler and the thing that
  * works; the caption sheet then sits over the grid until each frame is filed.
  */
 
-export type VisitScreen = "home" | "photos" | "note" | "observation" | "report";
+export type VisitScreen =
+  | "home"
+  | "photos"
+  | "note"
+  | "observation"
+  | "voice"
+  | "report";
 
 /** One navigator row of the read-only report screen. */
 export interface VisitSectionRow {
@@ -122,6 +138,8 @@ export interface VisitModeProps {
   observations: readonly Observation[];
   /** §6's key points, one per line on the `visit` row — what a Note becomes. */
   keyPoints: readonly string[];
+  /** The transcripts already saved against this report. */
+  transcripts: readonly TranscriptSource[];
   /** Every stored photograph, in print order — what the Photos screen shows. */
   photos: readonly ReportPhoto[];
   /** The six most recent, for the home strip. */
@@ -152,6 +170,7 @@ export function VisitMode({
   counters,
   observations,
   keyPoints,
+  transcripts,
   photos,
   lastPhotos,
 }: VisitModeProps) {
@@ -409,6 +428,42 @@ export function VisitMode({
   }
 
   /**
+   * Store what was pasted or dictated as a source on the report.
+   *
+   * Named by the day rather than by a file, because it came from a keyboard
+   * and not from a file: "Dictated on the visit" is what the Sources list at a
+   * desk will show, and it is true.
+   */
+  async function fileTranscript(content: string) {
+    setSaving(true);
+    const result = await saveTranscript({
+      reportId,
+      fileName: "Dictated on the visit",
+      content,
+    });
+    setSaving(false);
+
+    if (!result.ok) {
+      toast(result.error.message, "error");
+      return;
+    }
+    router.refresh();
+    toast(`Transcript saved — ${result.data.wordCount.toLocaleString("en-US")} words.`);
+  }
+
+  async function dropTranscript(id: string) {
+    setSaving(true);
+    const result = await deleteTranscript(id);
+    setSaving(false);
+    if (!result.ok) {
+      toast(result.error.message, "error");
+      return;
+    }
+    router.refresh();
+    toast("Transcript removed.");
+  }
+
+  /**
    * File one observation into §6.
    *
    * `saveObservations` takes the whole list and replaces it, so the new card
@@ -483,7 +538,7 @@ export function VisitMode({
         libraryRef.current?.click();
         return;
       case "voice":
-        toast("Voice capture and transcript analysis land with transcript support");
+        setScreen("voice");
         return;
     }
   }
@@ -567,6 +622,16 @@ export function VisitMode({
           saving={saving}
           onCancel={() => setScreen("home")}
           onSave={fileObservation}
+        />
+      ) : null}
+
+      {pending.length === 0 && screen === "voice" ? (
+        <TranscriptForm
+          transcripts={transcripts}
+          saving={saving}
+          onSave={fileTranscript}
+          onDelete={dropTranscript}
+          onCancel={() => setScreen("home")}
         />
       ) : null}
 

@@ -3,6 +3,7 @@ import { VisitMode } from "@/components/mobile/visit-mode";
 import { ButtonLink } from "@/components/ui/button";
 import { listReportPhotos } from "@/lib/data/photo-actions";
 import { getReport, listReports } from "@/lib/data/reports";
+import { listTranscripts } from "@/lib/data/transcript-actions";
 import { reportCompletion, sectionCompletion } from "@/lib/reports/completion";
 import {
   SECTIONS,
@@ -168,6 +169,8 @@ export default async function VisitPage() {
   const stored = await listReportPhotos(visit.id);
   const photos = stored.ok ? stored.data : [];
 
+  const sources = await listTranscripts(visit.id);
+
   const done = sectionCompletion(visit, photos);
 
   // "Aug 12, 2026" → "Aug 12": the header line names the day, not the year.
@@ -192,6 +195,7 @@ export default async function VisitPage() {
         counters={{ photos: photos.length, notes: visit.sections.qaBullets.length }}
         observations={visit.sections.observations}
         keyPoints={visit.sections.qaBullets}
+        transcripts={sources.ok ? sources.data : []}
         photos={photos}
         lastPhotos={latestFirst(photos).slice(0, LAST_PHOTO_COUNT)}
       />
