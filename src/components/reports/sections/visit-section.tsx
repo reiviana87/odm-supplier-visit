@@ -12,8 +12,10 @@ import { Tabs } from "@/components/ui/tabs";
 import { Input, Select, Textarea } from "@/components/ui/field";
 import { useToast } from "@/components/ui/toast";
 import { TranscriptPanel } from "@/components/reports/transcript-panel";
+import { analyzeTranscript } from "@/lib/ai/actions";
 import { saveObservations } from "@/lib/data/report-actions";
 import { joinQaBullets, splitQaBullets } from "@/lib/data/report-mappers";
+import { bulletsFromPaste } from "@/lib/reports/qa-bullets";
 import type { TranscriptSource } from "@/lib/data/transcript-actions";
 import type { Observation, Report, ReportPhoto } from "@/types/domain";
 
@@ -215,7 +217,16 @@ function ObservationCard({
   );
 }
 
-function QaBlock({ onExtract }: { onExtract: () => void }) {
+function QaBlock({
+  transcripts,
+  onExtract,
+  onToast,
+}: {
+  transcripts: readonly TranscriptSource[];
+  /** Ask the model for the key points of a transcript. */
+  onExtract: (transcript: TranscriptSource) => Promise<string[] | null>;
+  onToast: (message: string, tone?: "error" | "warning") => void;
+}) {
   // README §6.2 — §6's Q&A block is the `visit` section body, one bullet per
   // line, and the exclude control is that row's `excluded` flag.
   const { draft, setBody, setExcluded } = useSectionDraft("visit");
@@ -228,7 +239,27 @@ function QaBlock({ onExtract }: { onExtract: () => void }) {
   );
   const [nextId, setNextId] = useState(() => splitQaBullets(draft.body).length);
 
+  const [pasted, setPasted] = useState("");
+  const [extracting, setExtracting] = useState(false);
+
   const included = !draft.excluded;
+
+  /** Append a batch, keeping what is already there, and store it at once. */
+  const appendMany = useCallback(
+    (lines: readonly string[]) => {
+      if (lines.length === 0) return;
+      setBullets((current) => {
+        const next = [
+          ...current,
+          ...lines.map((text, index) => ({ id: `qa-batch-${nextId + index}`, text })),
+        ];
+        setBody(joinQaBullets(next.map((bullet) => bullet.text)));
+        return next;
+      });
+      setNextId((current) => current + lines.length);
+    },
+    [nextId, setBody],
+  );
 
   /** Local ids keep the inputs stable; the body is what is stored. */
   const commit = useCallback(
@@ -316,6 +347,44 @@ function QaBlock({ onExtract }: { onExtract: () => void }) {
             ))}
           </div>
 
+          {/* Paste first, type second. Notes from a visit arrive as a block —
+              from a phone, a notebook app, a transcript — and "Add bullet" one
+              at a time was the only way in, which is what made pasting the
+              visit's information impossible. */}
+          <div style={{ marginTop: bullets.length ? 12 : 0 }}>
+            <Textarea
+              value={pasted}
+              aria-label="Paste several key points at once"
+              placeholder={
+                "Paste your notes here — one key point per line.\n" +
+                "Each line becomes its own bullet."
+              }
+              onChange={(event) => setPasted(event.target.value)}
+              minHeight={74}
+              style={{ fontSize: 12.5, lineHeight: 1.55, background: "var(--color-bg)" }}
+            />
+            <div className="flex items-center" style={{ gap: 8, marginTop: 7 }}>
+              <Button
+                size="compact"
+                variant="primary"
+                disabled={bulletsFromPaste(pasted).length === 0}
+                onClick={() => {
+                  const lines = bulletsFromPaste(pasted);
+                  appendMany(lines);
+                  setPasted("");
+                  onToast(
+                    `${lines.length} key point${lines.length === 1 ? "" : "s"} added.`,
+                  );
+                }}
+              >
+                Add {bulletsFromPaste(pasted).length || ""} as bullets
+              </Button>
+              <span style={{ fontSize: 11.5, color: "var(--color-neutral-600)" }}>
+                One line, one bullet
+              </span>
+            </div>
+          </div>
+
           <div
             className="flex flex-wrap items-center"
             style={{ gap: 8, marginTop: 11 }}
@@ -333,7 +402,7 @@ function QaBlock({ onExtract }: { onExtract: () => void }) {
                 setNextId((current) => current + 1);
               }}
             >
-              Add bullet
+              Add one
             </Button>
             <Button
               size="compact"
@@ -342,9 +411,29 @@ function QaBlock({ onExtract }: { onExtract: () => void }) {
                 borderColor: "var(--color-accent-300)",
                 color: "var(--color-accent-800)",
               }}
-              onClick={onExtract}
+              disabled={extracting || transcripts.length === 0}
+              onClick={async () => {
+                const transcript = transcripts[0];
+                if (!transcript) return;
+                setExtracting(true);
+                const points = await onExtract(transcript);
+                setExtracting(false);
+                if (!points) return;
+                if (points.length === 0) {
+                  onToast("Nothing report-worthy was found in that transcript.");
+                  return;
+                }
+                appendMany(points);
+                onToast(
+                  `${points.length} key point${points.length === 1 ? "" : "s"} added from the transcript.`,
+                );
+              }}
             >
-              Extract from transcript
+              {extracting
+                ? "Reading the transcript\u2026"
+                : transcripts.length === 0
+                  ? "No transcript yet"
+                  : "Key points from the transcript"}
             </Button>
             <div style={{ flex: 1 }} />
             <span style={{ fontSize: 11.5, color: "var(--color-neutral-600)" }}>
@@ -473,7 +562,21 @@ export function VisitSection({
         style={{ gap: 8, marginBottom: 12 }}
       >
         <Tabs
-          items={VIEWS.map((item) => ({ id: item.id, label: item.label }))}
+          // Each tab carries its own count. §6 holds three different things in
+          // three places, and a transcript somebody had just pasted was behind
+          // a tab that gave no sign it held anything — "I made a transcript and
+          // I do not know where the information went".
+          items={VIEWS.map((item) => ({
+            id: item.id,
+            label:
+              item.id === "observations"
+                ? `Observations · ${observations.length}`
+                : item.id === "qa"
+                  ? `Q&A / Key points · ${report.sections.qaBullets.length}`
+                  : item.id === "transcript"
+                    ? `Transcript · ${transcripts.length}`
+                    : item.label,
+          }))}
           activeId={view}
           label="Visit information view"
           onChange={(id) => {
@@ -600,7 +703,25 @@ export function VisitSection({
       ) : null}
 
       {view === "observations" || view === "qa" ? (
-        <QaBlock onExtract={() => setView("transcript")} />
+        <QaBlock
+          transcripts={transcripts}
+          onToast={toast}
+          onExtract={async (transcript) => {
+            // The model reads the transcript and hands back findings; each one
+            // becomes a key point. "Extract from transcript" used to do nothing
+            // but switch tabs, which is why a transcript somebody pasted went
+            // somewhere they could not find and turned into nothing.
+            const result = await analyzeTranscript({
+              reportId: report.id,
+              transcript: transcript.content,
+            });
+            if (!result.ok) {
+              toast(result.error.message, "error");
+              return null;
+            }
+            return result.data.findings.map((finding) => finding.text);
+          }}
+        />
       ) : null}
     </div>
   );
