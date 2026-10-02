@@ -140,14 +140,35 @@ function body(text: string): Paragraph[] {
     ];
   }
 
+  // A blank line starts a new paragraph; a single newline is a line break
+  // INSIDE one. It used to be flattened to a space, so a block of notes pasted
+  // with one point per line arrived in Word as a single wall of prose and the
+  // structure the author typed was gone — in the document and nowhere else.
   return trimmed.split(/\n{2,}/).map(
     (block) =>
       new Paragraph({
         spacing: { after: 120, line: 276 },
         alignment: AlignmentType.JUSTIFIED,
-        children: [
-          new TextRun({ text: block.replace(/\n/g, " ").trim(), size: pt(10.5), font: FONT }),
-        ],
+        children: lineRuns(block),
+      }),
+  );
+}
+
+/**
+ * One run per line, with a break between them.
+ *
+ * `docx` has no "text with newlines" run: a `\n` inside a TextRun is dropped by
+ * Word, so the lines have to be separate runs joined by explicit breaks.
+ */
+function lineRuns(block: string): TextRun[] {
+  const lines = block.split("\n").map((line) => line.trim());
+  return lines.map(
+    (line, index) =>
+      new TextRun({
+        text: line,
+        size: pt(10.5),
+        font: FONT,
+        break: index === 0 ? undefined : 1,
       }),
   );
 }
@@ -156,7 +177,8 @@ function bullet(text: string): Paragraph {
   return new Paragraph({
     bullet: { level: 0 },
     spacing: { after: 60 },
-    children: [new TextRun({ text, size: pt(10.5), font: FONT })],
+    // A key point pasted as a wrapped paragraph carries its own newlines.
+    children: lineRuns(text),
   });
 }
 

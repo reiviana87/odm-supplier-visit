@@ -573,11 +573,25 @@ function body(text: string): string {
   const trimmed = (text ?? "").trim();
   if (!trimmed) return paragraph(BODY_PPR, run("—", RPR_BODY));
 
+  // A blank line is a new paragraph; a single newline is a break inside one.
+  // Flattening it to a space destroyed the shape of everything pasted as a
+  // list — see `lineRuns` in docx.ts for the same rule on the other side.
   return trimmed
     .split(/\n{2,}/)
-    .map((block) => paragraph(BODY_PPR, run(block.replace(/\s*\n\s*/g, " ").trim(), RPR_BODY)))
+    .map((block) =>
+      paragraph(
+        BODY_PPR,
+        block
+          .split("\n")
+          .map((line, index) => (index === 0 ? "" : BREAK) + run(line.trim(), RPR_BODY))
+          .join(""),
+      ),
+    )
     .join("");
 }
+
+/** A line break inside a paragraph, which is not the same as a new one. */
+const BREAK = "<w:r><w:br/></w:r>";
 
 /** One bulleted line. */
 function bullet(text: string): string {
@@ -588,7 +602,17 @@ function bullet(text: string): string {
   // A literal bullet rather than a w:numPr: the template's numbering part defines
   // six lists and none of them is documented as the bullet list, so pointing at
   // one by index would be a guess that shows up as the wrong glyph.
-  return paragraph(pPr, run(`•  ${text}`, RPR_BODY));
+  // A key point pasted as a wrapped paragraph carries its own newlines, and a
+  // run cannot hold one — they become explicit breaks, exactly as in `body`.
+  const written = text.split("\n").map((line) => line.trim()).filter((line) => line !== "");
+  return paragraph(
+    pPr,
+    written
+      .map((line, index) =>
+        index === 0 ? run(`•  ${line}`, RPR_BODY) : BREAK + run(line, RPR_BODY),
+      )
+      .join(""),
+  );
 }
 
 // ── Tables ───────────────────────────────────────────────────────────────────

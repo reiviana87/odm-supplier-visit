@@ -211,7 +211,13 @@ function ObservationCard({
           style={{ fontSize: 13, lineHeight: 1.6, background: "var(--color-bg)" }}
         />
       ) : (
-        <div style={{ fontSize: 13, lineHeight: 1.6 }}>{observation.text}</div>
+        /* `pre-wrap`: the text is stored with its newlines and HTML collapses
+           them, so a note pasted as several paragraphs was shown as one
+           unbroken block — "I pasted text in paragraphs and it came out all
+           continuous". The database had it right the whole time. */
+        <div style={{ fontSize: 13, lineHeight: 1.6, whiteSpace: "pre-wrap" }}>
+          {observation.text}
+        </div>
       )}
     </Blueprint>
   );
@@ -356,8 +362,9 @@ function QaBlock({
               value={pasted}
               aria-label="Paste several key points at once"
               placeholder={
-                "Paste your notes here — one key point per line.\n" +
-                "Each line becomes its own bullet."
+                "Paste your notes here.\n\n" +
+                "Paragraphs separated by a blank line become one bullet each.\n" +
+                "Otherwise, one line is one bullet."
               }
               onChange={(event) => setPasted(event.target.value)}
               minHeight={74}
@@ -380,7 +387,7 @@ function QaBlock({
                 Add {bulletsFromPaste(pasted).length || ""} as bullets
               </Button>
               <span style={{ fontSize: 11.5, color: "var(--color-neutral-600)" }}>
-                One line, one bullet
+                A blank line starts a new bullet
               </span>
             </div>
           </div>

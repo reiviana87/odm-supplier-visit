@@ -56,3 +56,40 @@ describe("bulletsFromPaste", () => {
     expect(bulletsFromPaste("   \n \n")).toEqual([]);
   });
 });
+
+describe("bulletsFromPaste with paragraphs", () => {
+  it("makes one bullet per paragraph when blank lines separate them", () => {
+    // The shape of a block copied out of Word or a PDF: each paragraph is one
+    // point, and the newlines inside it are where the source happened to wrap.
+    const pasted = [
+      "Factory Tour: A visit to the on-site parts production line,",
+      "specifically including the 4-inch and surface pumps series.",
+      "",
+      "EBARA Italy vs. EBAS Comparison: We would like to evaluate",
+      "the EBARA pump samples you have already purchased.",
+      "",
+      "Packaging/Manual: Please show us the packaging.",
+    ].join("\n");
+
+    const bullets = bulletsFromPaste(pasted);
+    expect(bullets).toHaveLength(3);
+    expect(bullets[0]).toContain("Factory Tour:");
+    expect(bullets[0]).toContain("4-inch and surface pumps");
+    expect(bullets[1]).toContain("EBARA Italy vs. EBAS Comparison:");
+    expect(bullets[2]).toBe("Packaging/Manual: Please show us the packaging.");
+  });
+
+  it("still gives one bullet per line when there is no blank line", () => {
+    expect(bulletsFromPaste("Lead time four weeks\nTwo shifts\nISO 9001 seen")).toHaveLength(3);
+  });
+
+  it("keeps the wrapping inside a paragraph rather than flattening it", () => {
+    const bullets = bulletsFromPaste("First line\nsecond line\n\nAnother point");
+    expect(bullets[0]).toBe("First line\nsecond line");
+    expect(bullets[1]).toBe("Another point");
+  });
+
+  it("treats a run of blank lines as one boundary", () => {
+    expect(bulletsFromPaste("One\n\n\n\nTwo")).toEqual(["One", "Two"]);
+  });
+});
