@@ -50,9 +50,19 @@ export interface CaptionSheetProps {
   value: string;
   onChange: (value: string) => void;
   onRetake: () => void;
-  /** Store it and ask the model for a caption, which the desk then reviews. */
-  onAiLater: () => void;
+  /** Store it and ask the model to write the caption. */
+  onGenerate: () => void;
+  /** Store it with whatever is in the field — nothing, if nothing is typed. */
   onSave: () => void;
+  /**
+   * How many frames are still waiting behind this one.
+   *
+   * A visit produces photographs in bursts, and being marched through a
+   * caption sheet forty times is not a workflow. When there is a queue, the
+   * whole of it can be filed at once and captioned later from Photos.
+   */
+  remaining?: number;
+  onSaveAll?: () => void;
   /**
    * The frame is being stored.
    *
@@ -70,8 +80,10 @@ export function CaptionSheet({
   value,
   onChange,
   onRetake,
-  onAiLater,
+  onGenerate,
   onSave,
+  remaining = 0,
+  onSaveAll,
   busy = false,
 }: CaptionSheetProps) {
   const hasCaption = value.trim().length > 0;
@@ -166,14 +178,18 @@ export function CaptionSheet({
         ))}
       </div>
 
+      {/* Two choices, named for what they do. They used to be "AI caption
+          later" and "Save without caption", which read as two ways of not
+          writing a caption — and the first one did not mean later, it asked
+          the model immediately. */}
       <div style={{ display: "flex", gap: 8 }}>
         <Button
           variant="secondary"
-          onClick={onAiLater}
+          onClick={onGenerate}
           disabled={busy}
           style={{ flex: 1, fontSize: 12.5, minHeight: 44 }}
         >
-          {busy ? "Working\u2026" : "AI caption later"}
+          {busy ? "Working\u2026" : "Write it with AI"}
         </Button>
         <Button
           variant="primary"
@@ -181,9 +197,35 @@ export function CaptionSheet({
           disabled={busy}
           style={{ flex: 1, fontSize: 12.5, minHeight: 44 }}
         >
-          {busy ? "Saving\u2026" : hasCaption ? "Save caption" : "Save without caption"}
+          {busy ? "Saving\u2026" : hasCaption ? "Save this caption" : "Save, caption later"}
         </Button>
       </div>
+
+      {remaining > 0 && onSaveAll ? (
+        <>
+          <Button
+            variant="secondary"
+            onClick={onSaveAll}
+            disabled={busy}
+            block
+            style={{ marginTop: 8, fontSize: 12.5, minHeight: 44 }}
+          >
+            Save all {remaining + 1} now, caption them later
+          </Button>
+          <p
+            style={{
+              margin: "6px 0 0",
+              fontSize: 11,
+              lineHeight: 1.4,
+              color: "var(--color-neutral-600)",
+              textAlign: "center",
+            }}
+          >
+            They go to {sectionLabel}. Captions can be written, or asked of the
+            AI, from Photos.
+          </p>
+        </>
+      ) : null}
     </div>
   );
 }

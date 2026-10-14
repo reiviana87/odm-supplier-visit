@@ -309,6 +309,53 @@ export function VisitMode({
     [caption, filing, pending, region, reportId, router, toast],
   );
 
+  /**
+   * File every frame still waiting, with no caption on any of them.
+   *
+   * A burst of photographs used to mean the caption sheet forty times over,
+   * one frame at a time, with no way past it — so the honest answer to "I will
+   * write these at a desk" was to tap through forty sheets. They are stored in
+   * the order they were taken and can be captioned, or handed to the model,
+   * from Photos.
+   */
+  const fileEveryPending = useCallback(async () => {
+    if (filing || pending.length === 0) return;
+    setFiling(true);
+
+    let stored = 0;
+    let firstError: string | null = null;
+
+    for (const frame of pending) {
+      const result = await uploadReportPhoto({
+        reportId,
+        region,
+        fileName: frame.file.name,
+        mimeType: frame.file.type || "image/jpeg",
+        width: frame.width,
+        height: frame.height,
+        capturedAt: frame.capturedAt,
+        file: frame.file,
+      });
+      if (result.ok) stored += 1;
+      else if (!firstError) firstError = result.error.message;
+      URL.revokeObjectURL(frame.previewUrl);
+    }
+
+    setPending([]);
+    setCaption("");
+    setFiling(false);
+    router.refresh();
+
+    if (firstError) toast(firstError, "error");
+    if (stored > 0) {
+      toast(
+        `${stored} photograph${stored === 1 ? "" : "s"} filed under ${
+          IMAGE_REGION_LABELS[region]
+        } — caption them in Photos.`,
+      );
+    }
+  }, [filing, pending, region, reportId, router, toast]);
+
   /** Drop the head of the queue without storing it, and open the camera again. */
   const retakeHead = useCallback(() => {
     const head = pending[0];
@@ -727,7 +774,7 @@ export function VisitMode({
             >
               {pending.length === 1
                 ? "1 photograph to file"
-                : `${pending.length} photographs to file`}
+                : `Photograph 1 of ${pending.length} to file`}
             </div>
             <Select
               aria-label="Destination section"
@@ -758,9 +805,11 @@ export function VisitMode({
               value={caption}
               onChange={setCaption}
               busy={filing}
+              remaining={pending.length - 1}
               onRetake={retakeHead}
-              onAiLater={() => void fileHead("ai")}
+              onGenerate={() => void fileHead("ai")}
               onSave={() => void fileHead("mine")}
+              onSaveAll={() => void fileEveryPending()}
             />
           </div>
         </div>
@@ -794,8 +843,22 @@ function PhotoScreen({
   const { toast } = useToast();
   // Proposals waiting for a yes, by photo id. Nothing is written until the
   // author takes it — §16.
-  const [proposals, setProposals] = useState<Record<string, string>>({});
+  //
+  // Seeded from the stored rows, not only from what was asked on this screen:
+  // "Write it with AI" at the moment of capture leaves the model's words in
+  // `ai_caption` with `caption_state: suggested`, and until now the phone had
+  // no way to show them. A proposal nobody can see is a proposal nobody made.
+  const [dismissed, setDismissed] = useState<ReadonlySet<string>>(new Set());
+  const [asked, setAsked] = useState<Record<string, string>>({});
   const [asking, setAsking] = useState<string | null>(null);
+
+  const proposals: Record<string, string> = { ...asked };
+  for (const photo of photos) {
+    if (dismissed.has(photo.id) || proposals[photo.id]) continue;
+    if (photo.captionState === "suggested" && photo.aiCaption.trim()) {
+      proposals[photo.id] = photo.aiCaption.trim();
+    }
+  }
   // Keyed by photo id: what the user has typed but not yet committed. What is
   // stored stays the source of truth for every card not being edited.
   const [edits, setEdits] = useState<Record<string, string>>({});
@@ -907,11 +970,12 @@ function PhotoScreen({
                       onClick={() => {
                         const text = proposals[photo.id];
                         setEdits((current) => ({ ...current, [photo.id]: text }));
-                        setProposals((current) => {
+                        setAsked((current) => {
                           const next = { ...current };
                           delete next[photo.id];
                           return next;
                         });
+                        setDismissed((current) => new Set(current).add(photo.id));
                         void commit(photo, text);
                       }}
                     >
@@ -920,13 +984,14 @@ function PhotoScreen({
                     <Button
                       size="compact"
                       variant="secondary"
-                      onClick={() =>
-                        setProposals((current) => {
+                      onClick={() => {
+                        setAsked((current) => {
                           const next = { ...current };
                           delete next[photo.id];
                           return next;
-                        })
-                      }
+                        });
+                        setDismissed((current) => new Set(current).add(photo.id));
+                      }}
                     >
                       Discard
                     </Button>
@@ -945,7 +1010,12 @@ function PhotoScreen({
                     );
                     setAsking(null);
                     if (suggestion) {
-                      setProposals((current) => ({ ...current, [photo.id]: suggestion }));
+                      setDismissed((current) => {
+                        const next = new Set(current);
+                        next.delete(photo.id);
+                        return next;
+                      });
+                      setAsked((current) => ({ ...current, [photo.id]: suggestion }));
                     }
                   }}
                   style={{
