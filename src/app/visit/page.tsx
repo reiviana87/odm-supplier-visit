@@ -32,6 +32,14 @@ import {
  * underneath showed another supplier's factory instead.
  */
 
+/** One row of the report picker in the phone's header. */
+export interface VisitChoice {
+  id: string;
+  documentNumber: string;
+  supplierShortName: string;
+  visitDate: string;
+}
+
 /** The "Last photos" strip holds six (prototype line 3304). */
 const LAST_PHOTO_COUNT = 6;
 
@@ -138,11 +146,25 @@ function latestFirst(photos: readonly ReportPhoto[]): ReportPhoto[] {
  * reports table opens on (README §19). `listReports()` already returns them in
  * that order and already leaves the archived ones out.
  */
-async function openVisit(): Promise<Report | { message: string }> {
+async function openVisit(
+  requested: string | undefined,
+): Promise<{ report: Report; open: readonly VisitChoice[] } | { message: string }> {
   const open = await listReports();
   if (!open.ok) return { message: open.error.message };
 
-  const summary = open.data[0];
+  const choices: VisitChoice[] = open.data.map((row) => ({
+    id: row.id,
+    documentNumber: row.documentNumber,
+    supplierShortName: row.supplierShortName,
+    visitDate: row.visitDate,
+  }));
+
+  // The one the URL asks for, else the one touched last. Visit Mode used to
+  // have only the second rule and no way to say otherwise, so a phone always
+  // opened whatever report had been edited most recently — which is not the
+  // visit you are standing in if you edited another one at a desk this morning.
+  const summary =
+    (requested ? open.data.find((row) => row.id === requested) : undefined) ?? open.data[0];
   if (!summary) {
     return {
       message:
@@ -154,15 +176,25 @@ async function openVisit(): Promise<Report | { message: string }> {
   // The summary carries the header; the body behind it carries §6 and the
   // section predicates, and only `getReport` reads those.
   const detail = await getReport(summary.id);
-  return detail.ok ? detail.data.report : { message: detail.error.message };
+  return detail.ok
+    ? { report: detail.data.report, open: choices }
+    : { message: detail.error.message };
 }
 
-export default async function VisitPage() {
-  const visit = await openVisit();
+export default async function VisitPage({
+  searchParams,
+}: {
+  /** `?report=<id>` — which visit the phone is standing in. */
+  searchParams: Promise<{ report?: string }>;
+}) {
+  const { report: requested } = await searchParams;
+  const opened = await openVisit(requested);
 
-  if ("message" in visit) {
-    return <NoOpenVisit message={visit.message} />;
+  if ("message" in opened) {
+    return <NoOpenVisit message={opened.message} />;
   }
+
+  const visit = opened.report;
 
   // One read serves the strip, the gallery, the photo counter and both
   // completion predicates, so none of them can disagree with the others.
@@ -184,6 +216,7 @@ export default async function VisitPage() {
         visitLine={`Factory Visit · ${visitDay} · ${visit.startTime ?? VISIT_START_FALLBACK}`}
         status={visit.status}
         documentNumber={visit.documentNumber}
+        openReports={opened.open}
         completion={reportCompletion(visit, photos)}
         sections={SECTIONS.map((section) => ({
           id: section.id,

@@ -34,6 +34,8 @@ import {
   type SectionId,
 } from "@/types/domain";
 
+import type { VisitChoice } from "@/app/visit/page";
+
 import { CaptionSheet } from "./caption-sheet";
 import { NoteForm } from "./note-form";
 import { TranscriptForm } from "./transcript-form";
@@ -136,6 +138,8 @@ export interface VisitModeProps {
    * set, so the write needs the rows it must keep, not only the new one.
    */
   observations: readonly Observation[];
+  /** Every open report, so the phone can be pointed at a different visit. */
+  openReports: readonly VisitChoice[];
   /** §6's key points, one per line on the `visit` row — what a Note becomes. */
   keyPoints: readonly string[];
   /** The transcripts already saved against this report. */
@@ -169,6 +173,7 @@ export function VisitMode({
   sections,
   counters,
   observations,
+  openReports,
   keyPoints,
   transcripts,
   photos,
@@ -382,6 +387,34 @@ export function VisitMode({
     [reportId, router, toast],
   );
 
+  /**
+   * Ask the model to caption a photograph that is already stored.
+   *
+   * There was no way to do this from the phone at all: the AI could only be
+   * asked at the moment of capture, and the desktop's "Generate all captions"
+   * skips any photograph that already has one. So a caption written in a hurry
+   * in a factory could never be improved from the device that took it.
+   *
+   * The proposal is returned rather than written. §16 is the rule — the model
+   * suggests, the author accepts — so the screen offers it and the author
+   * decides.
+   */
+  const askAiForCaption = useCallback(
+    async (photoId: string, hint: string): Promise<string | null> => {
+      const result = await generatePhotoCaption({
+        reportId,
+        photoId,
+        hint: hint.trim() || undefined,
+      });
+      if (!result.ok) {
+        toast(result.error.message, "error");
+        return null;
+      }
+      return result.data.caption;
+    },
+    [reportId, toast],
+  );
+
   /** Replace §6's observation cards. */
   const writeObservations = useCallback(
     async (next: readonly Observation[]): Promise<boolean> => {
@@ -590,7 +623,13 @@ export function VisitMode({
         }}
       />
 
-      <VisitHeader supplierName={supplierName} visitLine={visitLine} status={status} />
+      <VisitHeader
+        supplierName={supplierName}
+        visitLine={visitLine}
+        status={status}
+        reportId={reportId}
+        openReports={openReports}
+      />
 
       {pending.length === 0 && screen === "home" ? (
         <QuickActionGrid
@@ -608,6 +647,7 @@ export function VisitMode({
           photos={photos}
           onBack={() => setScreen("home")}
           onCaptioned={() => router.refresh()}
+          onAskAi={askAiForCaption}
         />
       ) : null}
 
@@ -743,12 +783,19 @@ function PhotoScreen({
   photos,
   onBack,
   onCaptioned,
+  onAskAi,
 }: {
   photos: readonly ReportPhoto[];
   onBack: () => void;
   onCaptioned: () => void;
+  /** Ask the model for a caption; returns the proposal, or null on failure. */
+  onAskAi: (photoId: string, hint: string) => Promise<string | null>;
 }) {
   const { toast } = useToast();
+  // Proposals waiting for a yes, by photo id. Nothing is written until the
+  // author takes it — §16.
+  const [proposals, setProposals] = useState<Record<string, string>>({});
+  const [asking, setAsking] = useState<string | null>(null);
   // Keyed by photo id: what the user has typed but not yet committed. What is
   // stored stays the source of truth for every card not being edited.
   const [edits, setEdits] = useState<Record<string, string>>({});
@@ -794,8 +841,11 @@ function PhotoScreen({
               {/* eslint-disable-next-line @next/next/no-img-element -- stored
                   photograph behind a signed URL, no known intrinsic size. */}
               <img
-                src={photo.src}
+                // The gallery shows every photograph of the visit at once.
+                src={photo.thumbSrc ?? photo.src}
                 alt={photo.caption || "Stored photograph, no caption yet"}
+                loading="lazy"
+                decoding="async"
                 style={{
                   width: "100%",
                   maxHeight: 260,
@@ -819,13 +869,95 @@ function PhotoScreen({
               <Textarea
                 aria-label="Caption"
                 value={edits[photo.id] ?? photo.caption}
-                placeholder="Type a caption — or leave it for the AI at the desk"
+                placeholder="Type a caption, or ask the AI below"
                 onChange={(event) =>
                   setEdits((current) => ({ ...current, [photo.id]: event.target.value }))
                 }
                 onBlur={(event) => void commit(photo, event.target.value)}
                 style={{ minHeight: 60, fontSize: 13, lineHeight: 1.45 }}
               />
+
+              {proposals[photo.id] ? (
+                <div
+                  style={{
+                    marginTop: 7,
+                    padding: "7px 9px",
+                    border: "1px solid var(--color-accent-300)",
+                    background: "var(--color-accent-100)",
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize: 10,
+                      letterSpacing: ".1em",
+                      textTransform: "uppercase",
+                      color: "var(--color-accent-700)",
+                      marginBottom: 4,
+                    }}
+                  >
+                    Suggested
+                  </div>
+                  <p style={{ margin: "0 0 7px", fontSize: 12.5, lineHeight: 1.45 }}>
+                    {proposals[photo.id]}
+                  </p>
+                  <div className="flex" style={{ gap: 6 }}>
+                    <Button
+                      size="compact"
+                      variant="primary"
+                      onClick={() => {
+                        const text = proposals[photo.id];
+                        setEdits((current) => ({ ...current, [photo.id]: text }));
+                        setProposals((current) => {
+                          const next = { ...current };
+                          delete next[photo.id];
+                          return next;
+                        });
+                        void commit(photo, text);
+                      }}
+                    >
+                      Use this
+                    </Button>
+                    <Button
+                      size="compact"
+                      variant="secondary"
+                      onClick={() =>
+                        setProposals((current) => {
+                          const next = { ...current };
+                          delete next[photo.id];
+                          return next;
+                        })
+                      }
+                    >
+                      Discard
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <Button
+                  size="compact"
+                  variant="secondary"
+                  disabled={asking !== null}
+                  onClick={async () => {
+                    setAsking(photo.id);
+                    const suggestion = await onAskAi(
+                      photo.id,
+                      edits[photo.id] ?? photo.caption,
+                    );
+                    setAsking(null);
+                    if (suggestion) {
+                      setProposals((current) => ({ ...current, [photo.id]: suggestion }));
+                    }
+                  }}
+                  style={{
+                    marginTop: 7,
+                    fontSize: 12,
+                    borderColor: "var(--color-accent-300)",
+                    color: "var(--color-accent-800)",
+                  }}
+                >
+                  {asking === photo.id ? "Looking at the photo…" : "Ask the AI for a caption"}
+                </Button>
+              )}
             </Blueprint>
           ))}
         </div>

@@ -2,7 +2,11 @@
 
 import { useSyncExternalStore } from "react";
 
+import { useRouter } from "next/navigation";
+
+import type { VisitChoice } from "@/app/visit/page";
 import { ReportStatusBadge } from "@/components/ui/badge";
+import { Select } from "@/components/ui/field";
 import { Icon } from "@/components/ui/icon";
 import type { ReportStatus } from "@/types/domain";
 
@@ -54,9 +58,20 @@ export interface VisitHeaderProps {
   /** e.g. "Factory Visit · Aug 12 · 10:32". */
   visitLine: string;
   status: ReportStatus;
+  /** The visit this phone is standing in. */
+  reportId: string;
+  /** Every open report, so it can stand in a different one. */
+  openReports: readonly VisitChoice[];
 }
 
-export function VisitHeader({ supplierName, visitLine, status }: VisitHeaderProps) {
+export function VisitHeader({
+  supplierName,
+  visitLine,
+  status,
+  reportId,
+  openReports,
+}: VisitHeaderProps) {
+  const router = useRouter();
   const offline = useIsOffline();
   return (
     <header
@@ -86,6 +101,26 @@ export function VisitHeader({ supplierName, visitLine, status }: VisitHeaderProp
         </div>
         <ReportStatusBadge status={status} />
       </div>
+
+      {/* Which visit this is. There was no way to say: the phone always opened
+          whichever report had been edited last, so arriving at a supplier after
+          a morning of desk work put you in the wrong one with no way out. */}
+      {openReports.length > 1 ? (
+        <Select
+          aria-label="Which visit this phone is standing in"
+          value={reportId}
+          onChange={(event) => router.push(`/visit?report=${event.target.value}`)}
+          // The 44px touch target README §24 asks for: a native select renders
+          // no ::after, so the box itself has to grow.
+          style={{ marginTop: 9, fontSize: 12.5, minHeight: 44 }}
+        >
+          {openReports.map((choice) => (
+            <option key={choice.id} value={choice.id}>
+              {choice.supplierShortName} · {choice.visitDate} · {choice.documentNumber}
+            </option>
+          ))}
+        </Select>
+      ) : null}
 
       {offline ? (
         <p

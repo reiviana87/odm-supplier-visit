@@ -65,6 +65,8 @@ const SECTION_LABEL: CSSProperties = {
 export interface VisitPhoto {
   id: string;
   src: string;
+  /** The 320px version, when storage could sign one. */
+  thumbSrc?: string;
   caption: string;
 }
 
@@ -179,8 +181,12 @@ export function QuickActionGrid({
                photographs behind signed URLs, no known intrinsic size. */
             <img
               key={photo.id}
-              src={photo.src}
+              // 70px each, six of them: the stored frames were 3.6 MB before
+              // the strip could paint.
+              src={photo.thumbSrc ?? photo.src}
               alt={photo.caption}
+              loading="lazy"
+              decoding="async"
               style={{
                 width: "100%",
                 height: 70,

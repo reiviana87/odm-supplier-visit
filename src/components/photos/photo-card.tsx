@@ -195,9 +195,12 @@ export function PhotoCard({
             phone appeared as a zoomed strip of its own middle. The grey ground
             is the letterboxing, and it is honest about the shape of the frame. */}
         <img
-          src={photo.src}
+          // The 320px version where one exists: the card is a 150px box, and
+          // the stored frame is around 600 KB.
+          src={photo.thumbSrc ?? photo.src}
           alt={altText(photo, label)}
           loading="lazy"
+          decoding="async"
           style={{
             width: "100%",
             height: 150,

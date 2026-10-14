@@ -387,6 +387,16 @@ export interface ProductRow {
 
 export interface ReportPhoto {
   id: string;
+  /**
+   * A 320px version of the same object, for a grid or a strip.
+   *
+   * Every surface used to render `src`, which is the stored 1600px frame —
+   * around 600 KB each. Six thumbnails on the phone's home screen meant 3.6 MB
+   * before the first one appeared, over factory wifi. Storage resizes on the
+   * way out, so the same photograph costs about 18 KB here. Absent when the
+   * resize could not be signed; fall back to `src`.
+   */
+  thumbSrc?: string;
   /** Resolved URL of the image. */
   src: string;
   caption: string;

@@ -352,8 +352,19 @@ const SIGNED_URL_TTL_SECONDS = 60 * 60;
  * Signed in one batch rather than per card: a report with forty photographs
  * would otherwise make forty round trips before it could paint.
  */
+/**
+ * The size a grid or a strip asks for.
+ *
+ * 320 on the longest edge: a 70px strip thumbnail on a 3× phone screen is
+ * 210 device pixels, so this is sharp with room to spare, and it is 1/37th of
+ * the bytes of the stored frame.
+ */
+const THUMBNAIL_EDGE = 320;
+
 export async function signPhotoUrls(
   paths: readonly string[],
+  /** Ask storage to resize on the way out. */
+  thumbnail = false,
 ): Promise<DataResult<Record<string, string>>> {
   if (paths.length === 0) return ok({});
 
@@ -362,6 +373,36 @@ export async function signPhotoUrls(
 
   const client = await getServerSupabase();
   if (!client) return fail("offline");
+
+  if (thumbnail) {
+    // One call per path, because the resize is signed INTO the token — a batch
+    // token carries no transformation, and the render endpoint ignores the
+    // query parameters without one. The calls go out together; the alternative
+    // is every grid in the app downloading full 600 KB frames.
+    const signed = await Promise.all(
+      paths.map(async (path) => {
+        const { data } = await client.storage.from(BUCKET).createSignedUrl(
+          path,
+          SIGNED_URL_TTL_SECONDS,
+          {
+            transform: {
+              width: THUMBNAIL_EDGE,
+              height: THUMBNAIL_EDGE,
+              resize: "contain",
+              quality: 70,
+            },
+          },
+        );
+        return [path, data?.signedUrl] as const;
+      }),
+    );
+
+    const thumbs: Record<string, string> = {};
+    for (const [path, url] of signed) if (url) thumbs[path] = url;
+    // A project without image transformation answers nothing here, and every
+    // caller falls back to the full frame rather than showing no photograph.
+    return ok(thumbs);
+  }
 
   const { data, error } = await client.storage
     .from(BUCKET)
@@ -403,13 +444,21 @@ export async function listReportPhotos(
 
   const rows = data ?? [];
   const paths = rows.map((row) => row.storage_path).filter((p): p is string => Boolean(p));
-  const signed = await signPhotoUrls(paths);
+  // Two batches rather than one: the full frame for anything that prints or
+  // opens, and a resized one for the grids. Signed together so a screen never
+  // waits on a second round trip to show a thumbnail.
+  const [signed, signedThumbs] = await Promise.all([
+    signPhotoUrls(paths),
+    signPhotoUrls(paths, true),
+  ]);
   const urls = signed.ok ? signed.data : {};
+  const thumbs = signedThumbs.ok ? signedThumbs.data : {};
 
   return ok(
     rows.map((row) => ({
       id: row.id,
       src: (row.storage_path && urls[row.storage_path]) || "",
+      thumbSrc: (row.storage_path && thumbs[row.storage_path]) || undefined,
       caption: row.caption,
       aiCaption: row.ai_caption,
       captionSource: row.caption_source,
