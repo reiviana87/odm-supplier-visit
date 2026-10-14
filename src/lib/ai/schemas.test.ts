@@ -44,7 +44,7 @@ describe("extractJsonObject", () => {
 describe("parseAiJson", () => {
   it("accepts a well-formed caption", () => {
     const result = parseAiJson(
-      '{"analysis":"A CNC machining centre.","caption":"CNC machining center used for pump casings","confidence":91}',
+      '{"analysis":"A CNC machining centre.","caption":"CNC machining center used for pump casings","shortCaption":"CNC machining centre","confidence":91}',
       photoCaptionSchema,
     );
     expect(result.ok).toBe(true);
@@ -53,11 +53,36 @@ describe("parseAiJson", () => {
 
   it("rejects a confidence outside 0-100 instead of clamping it", () => {
     const result = parseAiJson(
-      '{"analysis":"A machining centre.","caption":"CNC machining center","confidence":140}',
+      '{"analysis":"A machining centre.","caption":"CNC machining center","shortCaption":"Machining centre","confidence":140}',
       photoCaptionSchema,
     );
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.reason).toContain("confidence");
+  });
+
+  it("requires the short caption as well as the long one", () => {
+    // Both are written in one call, and the author picks which the report
+    // carries. A reply with only the long one is a reply the UI cannot offer a
+    // choice from, so it is refused rather than half-used.
+    const result = parseAiJson(
+      '{"analysis":"A test bench.","caption":"Hydraulic performance testing bench for pump flow verification","confidence":88}',
+      photoCaptionSchema,
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toContain("shortCaption");
+  });
+
+  it("accepts both captions and keeps them apart", () => {
+    const result = parseAiJson(
+      '{"analysis":"A test bench.","caption":"Hydraulic performance testing bench for pump flow verification","shortCaption":"Hydraulic test bench","confidence":88}',
+      photoCaptionSchema,
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.data.shortCaption).toBe("Hydraulic test bench");
+      expect(result.data.shortCaption.split(/\s+/).length).toBeLessThanOrEqual(4);
+      expect(result.data.caption.length).toBeGreaterThan(result.data.shortCaption.length);
+    }
   });
 
   it("rejects an invented finding category", () => {

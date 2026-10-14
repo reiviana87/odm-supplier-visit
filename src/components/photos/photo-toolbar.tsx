@@ -42,6 +42,8 @@ export interface PhotoToolbarProps {
    * pressed it, and the section emptied. The destination is the user's now.
    */
   onMoveTo: (region: ImageRegion) => void;
+  /** A caption run in flight, so the button stops looking idle. */
+  generating?: { done: number; total: number } | null;
   /**
    * The upload control itself, not a callback.
    *
@@ -86,6 +88,7 @@ export function PhotoToolbar({
   allSelected,
   uploadSlot,
   onGenerateAll,
+  generating = null,
   onToggleSelectAll,
   onArrange,
   onMoveTo,
@@ -99,8 +102,18 @@ export function PhotoToolbar({
       style={{ gap: 8, marginBottom: 12 }}
     >
       {uploadSlot}
-      <Button icon="spark" style={AI_BUTTON} onClick={onGenerateAll}>
-        Generate all captions
+      <Button
+        icon="spark"
+        style={AI_BUTTON}
+        onClick={onGenerateAll}
+        loading={generating !== null}
+        disabled={generating !== null}
+      >
+        {generating
+          ? `Reading photograph ${generating.done + 1} of ${generating.total}\u2026`
+          : selectedCount > 0
+            ? `Caption ${selectedCount} selected`
+            : "Generate all captions"}
       </Button>
       <Button
         style={TOOLBAR_BUTTON}

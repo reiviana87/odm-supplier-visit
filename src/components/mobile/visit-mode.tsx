@@ -106,6 +106,13 @@ export interface VisitSectionRow {
  * standing in front of the machine is worth more than one written from memory
  * at a desk, and it cannot be typed after the upload has already happened.
  */
+/** What the model returns for one photograph: the same picture, two lengths. */
+interface CaptionChoice {
+  long: string;
+  /** At most four words. Absent on a proposal stored before this existed. */
+  short?: string;
+}
+
 interface PendingPhoto {
   file: File;
   width: number;
@@ -447,7 +454,7 @@ export function VisitMode({
    * decides.
    */
   const askAiForCaption = useCallback(
-    async (photoId: string, hint: string): Promise<string | null> => {
+    async (photoId: string, hint: string): Promise<CaptionChoice | null> => {
       const result = await generatePhotoCaption({
         reportId,
         photoId,
@@ -457,7 +464,7 @@ export function VisitMode({
         toast(result.error.message, "error");
         return null;
       }
-      return result.data.caption;
+      return { long: result.data.caption, short: result.data.shortCaption };
     },
     [reportId, toast],
   );
@@ -837,8 +844,8 @@ function PhotoScreen({
   photos: readonly ReportPhoto[];
   onBack: () => void;
   onCaptioned: () => void;
-  /** Ask the model for a caption; returns the proposal, or null on failure. */
-  onAskAi: (photoId: string, hint: string) => Promise<string | null>;
+  /** Ask the model for a caption; returns both lengths, or null on failure. */
+  onAskAi: (photoId: string, hint: string) => Promise<CaptionChoice | null>;
 }) {
   const { toast } = useToast();
   // Proposals waiting for a yes, by photo id. Nothing is written until the
@@ -849,14 +856,17 @@ function PhotoScreen({
   // `ai_caption` with `caption_state: suggested`, and until now the phone had
   // no way to show them. A proposal nobody can see is a proposal nobody made.
   const [dismissed, setDismissed] = useState<ReadonlySet<string>>(new Set());
-  const [asked, setAsked] = useState<Record<string, string>>({});
+  const [asked, setAsked] = useState<Record<string, CaptionChoice>>({});
   const [asking, setAsking] = useState<string | null>(null);
 
-  const proposals: Record<string, string> = { ...asked };
+  const proposals: Record<string, CaptionChoice> = { ...asked };
   for (const photo of photos) {
     if (dismissed.has(photo.id) || proposals[photo.id]) continue;
+    // A proposal left by "Write it with AI" at the shutter. Only the long one
+    // is stored today, so the short one is offered when it was asked for on
+    // this screen and simply absent otherwise.
     if (photo.captionState === "suggested" && photo.aiCaption.trim()) {
-      proposals[photo.id] = photo.aiCaption.trim();
+      proposals[photo.id] = { long: photo.aiCaption.trim() };
     }
   }
   // Keyed by photo id: what the user has typed but not yet committed. What is
@@ -960,42 +970,65 @@ function PhotoScreen({
                   >
                     Suggested
                   </div>
-                  <p style={{ margin: "0 0 7px", fontSize: 12.5, lineHeight: 1.45 }}>
-                    {proposals[photo.id]}
-                  </p>
-                  <div className="flex" style={{ gap: 6 }}>
-                    <Button
-                      size="compact"
-                      variant="primary"
-                      onClick={() => {
-                        const text = proposals[photo.id];
-                        setEdits((current) => ({ ...current, [photo.id]: text }));
-                        setAsked((current) => {
-                          const next = { ...current };
-                          delete next[photo.id];
-                          return next;
-                        });
-                        setDismissed((current) => new Set(current).add(photo.id));
-                        void commit(photo, text);
-                      }}
-                    >
-                      Use this
-                    </Button>
-                    <Button
-                      size="compact"
-                      variant="secondary"
-                      onClick={() => {
-                        setAsked((current) => {
-                          const next = { ...current };
-                          delete next[photo.id];
-                          return next;
-                        });
-                        setDismissed((current) => new Set(current).add(photo.id));
-                      }}
-                    >
-                      Discard
-                    </Button>
-                  </div>
+                  {/* Two lengths, because the appendix cell is 7cm wide and a
+                      full technical caption wraps to three lines in it, while
+                      a §4.1 figure wants the whole sentence. The author picks;
+                      the model was asked for both in one call. */}
+                  {(
+                    [
+                      ["short", proposals[photo.id].short],
+                      ["long", proposals[photo.id].long],
+                    ] as const
+                  )
+                    .filter(([, text]) => Boolean(text))
+                    .map(([kind, text]) => (
+                      <div key={kind} style={{ marginBottom: 7 }}>
+                        <div
+                          style={{
+                            fontSize: 9.5,
+                            letterSpacing: ".1em",
+                            textTransform: "uppercase",
+                            color: "var(--color-neutral-600)",
+                            marginBottom: 2,
+                          }}
+                        >
+                          {kind === "short" ? "Short" : "Full"}
+                        </div>
+                        <p style={{ margin: "0 0 5px", fontSize: 12.5, lineHeight: 1.45 }}>
+                          {text}
+                        </p>
+                        <Button
+                          size="compact"
+                          variant="primary"
+                          onClick={() => {
+                            setEdits((current) => ({ ...current, [photo.id]: text! }));
+                            setAsked((current) => {
+                              const next = { ...current };
+                              delete next[photo.id];
+                              return next;
+                            });
+                            setDismissed((current) => new Set(current).add(photo.id));
+                            void commit(photo, text!);
+                          }}
+                        >
+                          Use the {kind} one
+                        </Button>
+                      </div>
+                    ))}
+                  <Button
+                    size="compact"
+                    variant="secondary"
+                    onClick={() => {
+                      setAsked((current) => {
+                        const next = { ...current };
+                        delete next[photo.id];
+                        return next;
+                      });
+                      setDismissed((current) => new Set(current).add(photo.id));
+                    }}
+                  >
+                    Discard both
+                  </Button>
                 </div>
               ) : (
                 <Button

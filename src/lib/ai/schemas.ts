@@ -74,6 +74,15 @@ export const photoCaptionSchema = z.object({
   /** The line that goes under the photograph in the report. */
   caption: z.string().min(3).max(200),
   /**
+   * The same photograph in at most four words.
+   *
+   * An appendix cell is 7cm wide and takes two columns to a page, so a full
+   * technical caption wraps to three lines and pushes the grid about. The
+   * author picks which one the report carries; the model is asked for both in
+   * one call rather than being asked twice for the same picture.
+   */
+  shortCaption: z.string().min(2).max(60),
+  /**
    * 0–100. The approved photo card shows "· review required" below 85, so this
    * has to come back from the model rather than be assumed.
    */

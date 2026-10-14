@@ -87,6 +87,8 @@ export function PhotoSection({
 
   const [edits, setEdits] = useState<Record<string, CaptionEdit>>({});
   const [selected, setSelected] = useState<ReadonlySet<string>>(NO_SELECTION);
+  /** Progress of a caption run, so the toolbar can say what is happening. */
+  const [generating, setGenerating] = useState<{ done: number; total: number } | null>(null);
 
   /**
    * README §1 lists the Layout & Preview tab as its own address —
@@ -303,30 +305,60 @@ export function PhotoSection({
    * separate batch endpoint: one prompt per image is what the vision API takes,
    * and doing them one at a time keeps a partial run useful.
    */
+  /**
+   * Ask the model to caption photographs.
+   *
+   * Selection first. "I clicked the images and then Generate all captions and
+   * nothing happened" was literally true: the handler ignored the selection
+   * and only looked at photographs with NO caption, so with every photograph
+   * captioned it toasted one sentence and stopped. Selecting is how a person
+   * says which ones they mean, including ones they want done again.
+   *
+   * It also reports progress. A vision call takes several seconds per
+   * photograph and this ran in a transition whose pending flag was discarded,
+   * so the screen did not move at all while five of them went out.
+   */
   const handleGenerateAllCaptions = useCallback(() => {
-    const targets = items.filter((photo) => !photo.caption.trim());
+    const chosen = items.filter((photo) => selected.has(photo.id));
+    const targets = chosen.length > 0 ? chosen : items.filter((p) => !p.caption.trim());
+
     if (targets.length === 0) {
-      toast("Every photograph in this section already has a caption.");
+      toast(
+        items.length === 0
+          ? "There are no photographs in this section yet."
+          : "Every photograph here already has a caption — select the ones to redo first.",
+      );
       return;
     }
 
     startAction(async () => {
       let done = 0;
-      let firstError: string | null = null;
+      const failures: string[] = [];
 
-      for (const photo of targets) {
+      for (const [index, photo] of targets.entries()) {
+        setGenerating({ done: index, total: targets.length });
         const result = await generatePhotoCaption({ reportId: report.id, photoId: photo.id });
         if (result.ok) done += 1;
-        else if (!firstError) firstError = result.error.message;
+        else failures.push(result.error.message);
       }
+      setGenerating(null);
 
       if (done > 0) {
         toast(`${done} caption${done === 1 ? "" : "s"} proposed — review before accepting.`);
         router.refresh();
       }
-      if (firstError) toast(firstError, "error");
+      // Named, not swallowed: a run where every call failed used to end in
+      // silence, which is indistinguishable from a button that does nothing.
+      if (failures.length > 0) {
+        toast(
+          failures.length === targets.length
+            ? `No caption could be generated. ${failures[0]}`
+            : `${failures.length} of ${targets.length} failed. ${failures[0]}`,
+          "error",
+        );
+      }
     });
-  }, [items, report.id, router, toast]);
+  }, [items, report.id, router, selected, toast]);
 
   /** README §9 — persist a drag-to-reorder as the whole region's new order. */
   const handleReorder = useCallback(
@@ -492,6 +524,7 @@ export function PhotoSection({
         allSelected={selected.size > 0 && selected.size === items.length}
         uploadSlot={uploadButton}
         onGenerateAll={handleGenerateAllCaptions}
+        generating={generating}
         onToggleSelectAll={toggleSelectAll}
         onArrange={() => toast(PHASE.arrange)}
         onMoveTo={handleMoveSelected}

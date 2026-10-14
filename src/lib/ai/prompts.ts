@@ -168,16 +168,23 @@ TASK: look at the photograph and produce a technical caption for the report.
   machining pump casing components" beats "a CNC machine".
 - Do not estimate quantities, capacity, age or brand unless legible.
 - One sentence. No trailing full stop is required.
+- "shortCaption" is the SAME photograph in AT MOST FOUR WORDS — a label for a
+  narrow appendix cell, not a summary of the long one. No article, no verb if
+  it can be avoided: "CNC machining centre", "Stator winding station",
+  "Hydraulic test bench". Four words is a hard ceiling; three is better.
 - "confidence" is 0–100: how sure you are of the identification. Below 85 the
   report flags the caption for human review, so be honest rather than generous.
 
-Examples of the register expected:
+Examples of the register expected, long and short:
 - "CNC machining center used for machining pump casing components"
+  / "CNC machining centre"
 - "Hydraulic performance testing bench used for pump flow, head and efficiency verification"
+  / "Hydraulic test bench"
 - "Stator winding station with automatic coil insertion equipment"
+  / "Stator winding station"
 
 Reply with JSON only:
-{"analysis": "<what you can see, two sentences at most>", "caption": "<the caption>", "confidence": <0-100>}
+{"analysis": "<what you can see, two sentences at most>", "caption": "<the long caption>", "shortCaption": "<at most four words>", "confidence": <0-100>}
 `.trim();
 }
 
