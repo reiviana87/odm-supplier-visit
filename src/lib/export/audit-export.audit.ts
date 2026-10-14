@@ -124,6 +124,29 @@ function imageCount(docx: Buffer): number {
   return [...zipEntries(docx).keys()].filter((name) => /^word\/media\//.test(name)).length;
 }
 
+/**
+ * The pixel size of every PNG the document embeds, read out of its IHDR.
+ *
+ * The grids ask storage for a 320px version of each photograph, which is 37
+ * times smaller and the reason they now paint instantly. The document must
+ * never get that one: at a 7cm appendix box, the stored 1600px frame prints at
+ * 581 dpi and a 320px thumbnail at 116, against the 300 a printed page wants.
+ * Nothing stops a future change from handing the export the thumbnail URL, so
+ * this measures what actually arrived.
+ */
+function embeddedPngSizes(docx: Buffer): Array<{ width: number; height: number }> {
+  const sizes: Array<{ width: number; height: number }> = [];
+  for (const [name, entry] of zipEntries(docx)) {
+    if (!/^word\/media\/.*\.png$/i.test(name)) continue;
+    const bytes = zipRead(docx, entry);
+    // IHDR is the first chunk: 8-byte signature, 4-byte length, "IHDR", then
+    // width and height as big-endian 32-bit integers.
+    if (bytes.length < 24 || bytes.toString("ascii", 12, 16) !== "IHDR") continue;
+    sizes.push({ width: bytes.readUInt32BE(16), height: bytes.readUInt32BE(20) });
+  }
+  return sizes;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // The seeded report, read back the way the app reads it
 // ─────────────────────────────────────────────────────────────────────────────
@@ -351,6 +374,26 @@ describe("what the user recorded, against what the document contains", () => {
 
   it("puts every photograph in the file", () => {
     expect(imageCount(builtIn)).toBeGreaterThanOrEqual(photos.length);
+  });
+
+  it("embeds the full frame, never the grid's thumbnail", () => {
+    for (const [label, docx] of [
+      ["built-in layout", builtIn],
+      ["corporate template", templated],
+    ] as const) {
+      if (!docx) continue;
+      const sizes = embeddedPngSizes(docx);
+      console.log(
+        `
+${label}: embedded PNG sizes — ${sizes
+          .map((s) => `${s.width}x${s.height}`)
+          .join(", ")}`,
+      );
+      // The seed stores 1600x1200. A thumbnail would arrive at 320 or less.
+      for (const size of sizes) {
+        expect(Math.max(size.width, size.height)).toBeGreaterThan(1000);
+      }
+    }
   });
 
   it("leaves no placeholder, id or undefined in the text", () => {

@@ -110,7 +110,15 @@ const SECTION_BODY = {
   visit: MARKERS.qaBullets.join("\n"),
 };
 
-/** A 2×3 PNG, built by hand so the script needs no fixture on disk. */
+/**
+ * A print-sized PNG, built by hand so the script needs no fixture on disk.
+ *
+ * 1600 x 1200 on purpose, not a 2 x 3 swatch: the audit asserts that what
+ * reaches the Word file is the stored frame and not the 320px thumbnail the
+ * grids now request, and that assertion is only worth anything if the stored
+ * frame is big enough to tell the two apart. Solid colour, so it compresses to
+ * a few kilobytes despite the dimensions.
+ */
 function tinyPng(r, g, b) {
   const crcTable = Array.from({ length: 256 }, (_, n) => {
     let c = n;
@@ -130,8 +138,8 @@ function tinyPng(r, g, b) {
     tail.writeUInt32BE(crc(body));
     return Buffer.concat([head, body, tail]);
   };
-  const width = 2;
-  const height = 3;
+  const width = 1600;
+  const height = 1200;
   const ihdr = Buffer.alloc(13);
   ihdr.writeUInt32BE(width, 0);
   ihdr.writeUInt32BE(height, 4);
@@ -288,8 +296,8 @@ async function main() {
       storage_path: path,
       mime_type: "image/png",
       size_bytes: bytes.length,
-      width: 2,
-      height: 3,
+      width: 1600,
+      height: 1200,
       caption: photo.caption,
       caption_source: "user",
       caption_state: "accepted",
